@@ -16,7 +16,7 @@ pandas>=2.0.0
 # Embeddings and Vector Store
 chromadb>=1.0,<2.0
 langchain-core>=1.1,<2.0
-langchain-chroma>=1.0,<2.0
+langchain-chroma>=1.1.0,<2.0
 langchain-openai>=1.0,<2.0
 langchain-ollama>=1.0,<2.0
 langchain-text-splitters>=1.0,<2.0

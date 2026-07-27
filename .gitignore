@@ -1,0 +1,75 @@
+# Local generated workspace
+/.local/
+
+# Runtime logs
+/logs/
+*.log
+*.log.*
+
+# Secrets
+/secrets/*
+!/secrets/README.md
+!/secrets/*.example
+!/secrets/*.example.*
+!/secrets/.gitkeep
+
+# Environment files and credentials
+.env
+.env.*
+!.env.example
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Python packaging metadata
+*.egg-info/
+.eggs/
+build/
+dist/
+wheelhouse/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+tmp/
+temp/
+
+# Frontend dependencies and build outputs
+node_modules/
+application/web/node_modules/
+application/web/dist/
+application/web/build/
+
+# IDEs and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local OCI packaging outputs
+
+/oci-layout/
+
+/artifacts/
+
+*.tar
+
+*.tar.gz
+
+*.tgz

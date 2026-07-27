@@ -1,0 +1,109 @@
+# Chatbot Scraper Configuration
+# Controls which data sources to run and how to process them
+
+# Data Sources Configuration
+sources:
+  static:
+    enabled: true
+    description: "Static content from CISUC website (pages via crawler + scraper)"
+    base_url: "https://www.cisuc.uc.pt"
+    output_dir: "static"
+    clean_text: true
+    rate_limit: 2
+
+  api:
+    enabled: true
+    description: "Data from CISUC API (Users, Projects, Publications)"
+    output_dir: "api"
+    endpoints:
+      - "api-users"
+      - "api-projects"
+      - "api-publications"
+
+  news:
+    enabled: true
+    description: "News articles from CISUC website"
+    base_url: "https://www.cisuc.uc.pt/en/posts"
+    output_dir: "news"
+    clean_text: true
+
+  publications:
+    enabled: false
+    description: "Publication data with DOI links from CISUC"
+    base_url: "https://www.cisuc.uc.pt/en/publications"
+    output_dir: "publications"
+
+# Text Cleaning Configuration
+text_cleaning:
+  enabled: true
+  remove_templates: true  # Remove {{ }}, {% %}, [[ ]]
+  remove_html_comments: true
+  remove_excessive_whitespace: true
+  min_paragraph_length: 20  # Minimum characters for a paragraph
+  remove_duplicates: true
+
+# Logging Configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  file: "ingestion.log"
+  console: true
+
+# Output Configuration
+# format: Controls how data is saved
+#   - "json": Only save JSON files (default, smallest size)
+#   - "markdown": Only convert to Markdown (for VDB ingestion)
+#   - "both": Save both JSON and converted Markdown files
+output:
+  format: "markdown"  # json, markdown, both
+  pretty_print: true
+  ensure_ascii: false
+
+# Crawler Configuration (for static content)
+crawler:
+  max_workers: 5
+  timeout: 30
+  max_pages: 1000
+  follow_external_links: false
+  allowed_domains:
+    - "cisuc.uc.pt"
+    - "www.cisuc.uc.pt"
+  
+  # URL Normalization & Deduplication (Optimization)
+  optimization:
+    normalize_urls: true          # Remove trailing slashes, fragments, tracking params
+    remove_tracking_params: true  # Remove utm_* parameters
+    remove_session_ids: true      # Remove PHPSESSID, etc.
+    early_deduplication: true     # Check duplicates at queue entry (not just before process)
+  
+  # URL Filtering Patterns
+  skip_patterns:
+    - '/login'
+    - '/logout'
+    - '/register'
+    - '/search'
+    - '/admin'
+    - '/people'
+  
+  # Crawl Limits (null = unlimited)
+  limits:
+    max_pages_per_category: null  # null for unlimited, or set to 500/1000
+    max_crawl_depth: null          # null for unlimited depth
+
+
+# API Configuration
+api:
+  timeout: 30
+  verify_ssl: true
+  use_token_auth: true  # Uses CISUC_TOKEN from .env
+  target_user_categories:
+    - "Integrated Researcher"
+    - "Collaborator"
+    - "Researcher"
+
+# Selenium Configuration (for news)
+selenium:
+  headless: true
+  implicit_wait: 5
+  scroll_pause_time: 2.5      # Time to wait between scrolls for content to load (seconds)
+  stability_threshold: 3      # How many times height must be equal to consider scroll complete
+  max_scroll_time: 300        # Maximum time to spend scrolling (seconds, 5 minutes)

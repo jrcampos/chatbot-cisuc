@@ -23,7 +23,7 @@ langchain-text-splitters>=1.0,<2.0
 
 
 # Document Processing
-docling>=2.0.0
+docling>=2.115.0
 
 # Logging & Utilities
 colorama==0.4.6

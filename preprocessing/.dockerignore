@@ -1,0 +1,7 @@
+config/system.env
+config/preprocessing.env
+secrets/*
+.local/*
+scripts/*
+application/*
+tests/*

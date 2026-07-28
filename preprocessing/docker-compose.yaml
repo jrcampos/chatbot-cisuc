@@ -1,0 +1,33 @@
+services:
+  preprocessing:
+    image: ${PREPROCESSING_IMAGE:-cisuc-preprocessing:local}
+    build:
+      context: ..
+      dockerfile: preprocessing/Dockerfile
+    command: ["sleep", "infinity"]
+    volumes:
+      - ../.local:/workspace
+    environment:
+      WORKSPACE: /workspace
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: 8000
+    depends_on:
+      - chromadb
+    networks:
+      - preprocessing
+
+  chromadb:
+    image: chromadb/chroma:1.5.9
+    volumes:
+      - ../.local/chroma:/data
+    networks:
+      - preprocessing
+
+  chromadb-final:
+    image: ${CHROMADB_FINAL_IMAGE:-cisuc-chromadb-final:local}
+    build:
+      context: ..
+      dockerfile: preprocessing/Dockerfile.chromadb
+
+networks:
+  preprocessing:

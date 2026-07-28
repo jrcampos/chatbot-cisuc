@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+set -a
+source config/system.env
+source config/preprocessing.env
+set +a
+
 # if local, source envs; otherwise they come from CI
 if [[ -f secrets/preprocessing.env ]]; then
   set -a

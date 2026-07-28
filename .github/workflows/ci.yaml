@@ -18,9 +18,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PREPROCESSING_LOCAL_IMAGE: cisuc-preprocessing:local
-  CHROMADB_LOCAL_IMAGE: cisuc-chromadb:local
-
   PREPROCESSING_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-preprocessing
   CHROMADB_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-chromadb
 
@@ -33,22 +30,26 @@ jobs:
     env:
       CISUC_TOKEN: ${{ secrets.CISUC_TOKEN }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-
-      LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
-      MODEL_EMBEDDINGS: ${{ vars.MODEL_EMBEDDINGS }}
-      LLM_URL: ${{ vars.LLM_URL }}
-
-      ENHANCEMENT_MODEL: ${{ vars.ENHANCEMENT_MODEL }}
-      ENHANCEMENT_MAX_WORKERS: ${{ vars.ENHANCEMENT_MAX_WORKERS }}
-
-      CHROMA_COLLECTION: ${{ vars.CHROMA_COLLECTION }}
-
-      PREPROCESSING_IMAGE: ${{ env.PREPROCESSING_LOCAL_IMAGE }}
-      CHROMADB_FINAL_IMAGE: ${{ env.CHROMADB_LOCAL_IMAGE }}
+      LLM_URL: ${{ secrets.LLM_URL }}
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
+
+      - name: Load configuration
+        shell: bash
+        run: |
+          set -a
+
+          source config/system.env
+          source config/preprocessing.env
+
+          set +a
+
+          {
+            echo "PREPROCESSING_IMAGE=$PREPROCESSING_IMAGE"
+            echo "CHROMADB_FINAL_IMAGE=$CHROMADB_FINAL_IMAGE"
+          } >> "$GITHUB_ENV"
 
       - name: Make scripts executable
         run: chmod +x scripts/*.sh
@@ -70,7 +71,7 @@ jobs:
             -f preprocessing/docker-compose.yaml \
             down --remove-orphans
 
-          docker image rm "$CHROMADB_LOCAL_IMAGE" 2>/dev/null || true
+          docker image rm "$CHROMADB_FINAL_IMAGE" 2>/dev/null || true
 
           rm -rf .local
           mkdir -p .local/raw .local/enriched .local/chroma
@@ -92,28 +93,31 @@ jobs:
       - name: Tag branch and commit images
         run: |
           docker tag \
-            "$PREPROCESSING_LOCAL_IMAGE" \
+            "$PREPROCESSING_IMAGE" \
             "$PREPROCESSING_REGISTRY_IMAGE:${GITHUB_SHA}"
 
           docker tag \
-            "$CHROMADB_LOCAL_IMAGE" \
+            "$CHROMADB_FINAL_IMAGE" \
             "$CHROMADB_REGISTRY_IMAGE:${GITHUB_SHA}"
 
           docker tag \
-            "$PREPROCESSING_LOCAL_IMAGE" \
-            "$PREPROCESSING_REGISTRY_IMAGE:${GITHUB_REF_NAME}-${GITHUB_SHA:0:7}"
-          
+            "$PREPROCESSING_IMAGE" \
+            "$PREPROCESSING_REGISTRY_IMAGE:${GITHUB_REF_NAME//\//-}-${GITHUB_SHA:0:7}"
+
           docker tag \
-            "$CHROMADB_LOCAL_IMAGE" \
-            "$CHROMADB_REGISTRY_IMAGE:${GITHUB_REF_NAME}-${GITHUB_SHA:0:7}"
+            "$CHROMADB_FINAL_IMAGE" \
+            "$CHROMADB_REGISTRY_IMAGE:${GITHUB_REF_NAME//\//-}-${GITHUB_SHA:0:7}"
 
       - name: Push branch and commit images
         run: |
           docker push "$PREPROCESSING_REGISTRY_IMAGE:${GITHUB_SHA}"
           docker push "$CHROMADB_REGISTRY_IMAGE:${GITHUB_SHA}"
 
-          docker push "$PREPROCESSING_REGISTRY_IMAGE:${GITHUB_REF_NAME}-${GITHUB_SHA:0:7}"
-          docker push "$CHROMADB_REGISTRY_IMAGE:${GITHUB_REF_NAME}-${GITHUB_SHA:0:7}"
+          docker push \
+            "$PREPROCESSING_REGISTRY_IMAGE:${GITHUB_REF_NAME//\//-}-${GITHUB_SHA:0:7}"
+
+          docker push \
+            "$CHROMADB_REGISTRY_IMAGE:${GITHUB_REF_NAME//\//-}-${GITHUB_SHA:0:7}"
 
       - name: Show Compose logs after failure
         if: failure()

@@ -4,6 +4,7 @@ services:
     build:
       context: ..
       dockerfile: preprocessing/Dockerfile
+    user: "${HOST_UID}:${HOST_GID}"
     command: ["sleep", "infinity"]
     volumes:
       - ../.local:/workspace

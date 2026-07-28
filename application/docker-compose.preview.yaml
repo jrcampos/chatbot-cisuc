@@ -1,20 +1,47 @@
 services:
-
-  proxy:
-    image: traefik:v3
-    command:
-      - --providers.docker=true
-      - --providers.docker.exposedbydefault=false
-      - --entrypoints.web.address=:80
-
-    ports:
-      - "80:80"
-
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+  gui:
+    ports: !reset []
 
     networks:
       - chatbot_net
+      - preview_proxy
+
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=preview_proxy
+
+      - traefik.http.routers.gui-${PREVIEW_ID}.rule=PathPrefix(`/preview/${PREVIEW_ID}/`)
+      - traefik.http.routers.gui-${PREVIEW_ID}.entrypoints=web
+      - traefik.http.routers.gui-${PREVIEW_ID}.middlewares=gui-strip-${PREVIEW_ID}
+      - traefik.http.routers.gui-${PREVIEW_ID}.service=gui-${PREVIEW_ID}
+
+      - traefik.http.middlewares.gui-strip-${PREVIEW_ID}.stripprefix.prefixes=/preview/${PREVIEW_ID}
+
+      - traefik.http.services.gui-${PREVIEW_ID}.loadbalancer.server.port=80
+
+  orchestrator:
+    ports: !reset []
+
+    networks:
+      - chatbot_net
+      - preview_proxy
+
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=preview_proxy
+
+      - traefik.http.routers.chat-${PREVIEW_ID}.rule=PathPrefix(`/preview/${PREVIEW_ID}/chat`)
+      - traefik.http.routers.chat-${PREVIEW_ID}.priority=100
+      - traefik.http.routers.chat-${PREVIEW_ID}.entrypoints=web
+      - traefik.http.routers.chat-${PREVIEW_ID}.middlewares=chat-strip-${PREVIEW_ID}
+      - traefik.http.routers.chat-${PREVIEW_ID}.service=chat-${PREVIEW_ID}
+
+      - traefik.http.middlewares.chat-strip-${PREVIEW_ID}.stripprefix.prefixes=/preview/${PREVIEW_ID}
+
+      - traefik.http.services.chat-${PREVIEW_ID}.loadbalancer.server.port=8002
 
 networks:
   chatbot_net:
+
+  preview_proxy:
+    external: true

@@ -23,23 +23,23 @@ from typing import Any
 
 # ===== Configuration from Environment =====
 # ChromaDB Connection
-CHROMA_HOST: str = os.getenv("CHROMA_HOST", "localhost")
-CHROMA_PORT: int = int(os.getenv("CHROMA_PORT", 8000))
-MAX_RETRYS: int = int(os.getenv("RAG_MAX_RETRYS", 5))
-RETRY_DELAY: int = int(os.getenv("RAG_RETRY_DELAY", 3))
+CHROMA_HOST: str = os.environ["CHROMA_HOST"]
+CHROMA_PORT: int = int(os.environ["CHROMA_PORT"])
+MAX_RETRYS: int = int(os.environ["RAG_MAX_RETRYS"])
+RETRY_DELAY: int = int(os.environ["RAG_RETRY_DELAY"])
 
 # Models Configuration
-LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "ollama").lower()
+LLM_PROVIDER: str = os.environ["LLM_PROVIDER"].lower()
 print(f"[INFO] A inicializar Motor Híbrido (Provider: {LLM_PROVIDER.upper()})")
+
+RAG_MODEL: str = os.environ["MODEL_EMBEDDINGS"]
 
 if LLM_PROVIDER == "openai":
     # --- OPENAI ---
-    RAG_MODEL: str = os.getenv("OPENAI_MODEL_EMBEDDINGS", "text-embedding-3-small")
     embeddings: OpenAIEmbeddings = OpenAIEmbeddings(model=RAG_MODEL)
 else:
     # --- OLLAMA ---
-    RAG_MODEL: str = os.getenv("OLLAMA_MODEL_EMBEDDINGS", "paraphrase-multilingual:278m-mpnet-base-v2-fp16")
-    OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://10.3.1.241:8080")
+    OLLAMA_URL: str = os.environ["OLLAMA_URL"]
     embeddings: OllamaEmbeddings = OllamaEmbeddings(base_url=OLLAMA_URL, model=RAG_MODEL)
 
 print(f"       -> Modelo de Embeddings: {RAG_MODEL}")

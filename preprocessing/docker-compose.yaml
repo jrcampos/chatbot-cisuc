@@ -1,6 +1,6 @@
 services:
   preprocessing:
-    image: ${PREPROCESSING_IMAGE}
+    image: ${PREPROCESSING_IMAGE:?PREPROCESSING_IMAGE must be defined}
     build:
       context: .
       dockerfile: Dockerfile

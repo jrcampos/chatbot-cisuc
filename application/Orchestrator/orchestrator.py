@@ -26,26 +26,24 @@ from langchain_openai import ChatOpenAI
 
 # ===== Environment Configuration =====
 # RAG Configuration
-RAG_API_URL: str = os.getenv("RAG_API_URL", "http://127.0.0.1:8001/query")
-TOP_K: int = int(os.getenv("RAG_TOP_K", 5))
+RAG_API_URL: str = os.environ["RAG_API_URL"]
+TOP_K: int = int(os.environ["RAG_TOP_K"])
 
 # Models Configuration
-LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "ollama").lower()
+LLM_PROVIDER: str = os.environ["LLM_PROVIDER"].lower()
 print(f"[INFO] A configurar Modelos no Orchestrator (Provider: {LLM_PROVIDER.upper()})...")
+
+SLM_MODEL: str = os.environ["MODEL_SLM"]
+LLM_MODEL: str = os.environ["MODEL_CHAT"]
 
 if LLM_PROVIDER == "openai":
     # --- OPENAI ---
-    SLM_MODEL: str = os.getenv("OPENAI_MODEL_SLM", "gpt-4o-mini")
-    LLM_MODEL: str = os.getenv("OPENAI_MODEL_CHAT", "gpt-4o")
-    
     slm_extrator: ChatOpenAI = ChatOpenAI(model=SLM_MODEL, temperature=0.0)
     llm_principal: ChatOpenAI = ChatOpenAI(model=LLM_MODEL, temperature=0.2)
 
 else:
     # --- OLLAMA ---
-    SLM_MODEL: str = os.getenv("OLLAMA_MODEL_SLM", "llama3.1:8b")
-    LLM_MODEL: str = os.getenv("OLLAMA_MODEL_CHAT", "gemma4:31b_custom")
-    OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://10.3.1.241:8080")
+    OLLAMA_URL: str = os.environ["OLLAMA_URL"]
     
     slm_extrator: ChatOllama = ChatOllama(base_url=OLLAMA_URL, model=SLM_MODEL, temperature=0.0, truncate=False)
     llm_principal: ChatOllama = ChatOllama(base_url=OLLAMA_URL, model=LLM_MODEL, temperature=0.2, truncate=False)

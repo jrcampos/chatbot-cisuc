@@ -2,7 +2,7 @@
 set -euo pipefail
 
 set -a
-source config/system.env
+source config/chatbot-common.env
 source config/preprocessing.env
 set +a
 
@@ -20,7 +20,7 @@ docker compose \
   -e LLM_PROVIDER \
   -e OPENAI_API_KEY \
   -e MODEL_EMBEDDINGS \
-  -e LLM_URL \
+  -e OLLAMA_URL \
   -e CHROMA_COLLECTION \
   preprocessing \
   python -m preprocessing.embeddings.populate "$@"

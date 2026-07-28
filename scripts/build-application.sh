@@ -1,17 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-COMMAND="${1:?Usage: $0 <up|build> [compose override files...]}"
-
-case "$COMMAND" in
-  up|build)
-    shift || true
-    ;;
-  *)
-    COMMAND="up"
-    ;;
-esac
-
 # Preserve values explicitly provided by preview deployment or CI.
 PROVIDED_VITE_ENDPOINT="${VITE_ORCHESTRATOR_API_ENDPOINT:-}"
 
@@ -47,23 +36,13 @@ done
 
 echo "GUI API endpoint: $VITE_ORCHESTRATOR_API_ENDPOINT"
 
-case "$COMMAND" in
-  build)
-    docker compose \
-      "${COMPOSE_ARGS[@]}" \
-      build
-    ;;
-
-  up)
-    if [[ -n "${COMPOSE_PROJECT_NAME:-}" ]]; then
-      docker compose \
-        -p "$COMPOSE_PROJECT_NAME" \
-        "${COMPOSE_ARGS[@]}" \
-        up -d --build
-    else
-      docker compose \
-        "${COMPOSE_ARGS[@]}" \
-        up -d --build
-    fi
-    ;;
-esac
+if [[ -n "${COMPOSE_PROJECT_NAME:-}" ]]; then
+  docker compose \
+    -p "$COMPOSE_PROJECT_NAME" \
+    "${COMPOSE_ARGS[@]}" \
+    up -d --build
+else
+  docker compose \
+    "${COMPOSE_ARGS[@]}" \
+    up -d --build
+fi

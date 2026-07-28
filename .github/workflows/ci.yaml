@@ -20,7 +20,7 @@ jobs:
   preprocessing:
     name: Build preprocessing images
 
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 120
     env:
       CISUC_TOKEN: ${{ secrets.CISUC_TOKEN }}
@@ -73,7 +73,7 @@ jobs:
 
       - name: Run full preprocessing
         run: |
-          ./scripts/run-full-processing.sh
+          ./scripts/run-full-processing.sh  --limit 3  # NOTE! remove after for final setup
 
       # No tag or push occurs before this point.
       # Reaching this step means both preprocessing runs succeeded.

@@ -70,6 +70,10 @@ class APIDataSource:
         
         try:
             # Initialize the API retriever
+            Logger.log_info(f"API base URL: {self.base_url}")
+            Logger.log_info(
+                f"API endpoints: {', '.join(self.endpoints)}"
+            )
             self.retriever = APIRetriever(self.token, self.base_url)
             self.retriever.set_endpoints(self.endpoints)
             Logger.log_success("API Data Source initialized")

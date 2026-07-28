@@ -17,26 +17,22 @@ from openai import OpenAI
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
+import argparse
+import shutil
 
 from preprocessing.paths import (
     RAW_DIR,
     ENRICHED_DIR,
-    ensure_local_directories,
+    ensure_workspace_directories,
 )
 
-OPENAI_MODEL = os.getenv(
-    "ENHANCEMENT_MODEL",
-    "gpt-4o-mini",
-)
+OPENAI_MODEL = os.environ["ENHANCEMENT_MODEL"]
 
 MAX_WORKERS = int(
-    os.getenv(
-        "ENHANCEMENT_MAX_WORKERS",
-        "5",
-    )
+    os.environ["ENHANCEMENT_MAX_WORKERS"]
 )
 
-api_key = os.getenv("OPENAI_API_KEY")
+api_key = os.environ["OPENAI_API_KEY"]
 
 if not api_key:
     raise RuntimeError("OPENAI_API_KEY is not set")
@@ -305,10 +301,13 @@ def process_single_user(user: dict[str, Any],
 
     return user
 
-def process_users_and_create_relations(users_json_path: str | Path,
-                                        pubs_json_path: str | Path,
-                                        projs_json_path: str | Path,
-                                        groups_data: dict[str, dict[str, str]]) -> tuple[list[dict[str, Any]], pd.DataFrame]:
+def process_users_and_create_relations(
+    users_json_path: str | Path,
+    pubs_json_path: str | Path,
+    projs_json_path: str | Path,
+    groups_data: dict[str, dict[str, str]],
+    limit: int | None = None,
+) -> tuple[list[dict[str, Any]], pd.DataFrame]:
     """
     Batch process all users in parallel and construct a relational DataFrame linking researchers to groups.
 
@@ -317,13 +316,17 @@ def process_users_and_create_relations(users_json_path: str | Path,
         pubs_json_path: Source JSON for publications.
         projs_json_path: Source JSON for projects.
         groups_data: Previously processed group summaries.
+        limit: Maximum number of users to process.
 
     Returns:
         tuple[list[dict], pd.DataFrame]: A list of enriched users and the relational mapping DataFrame.
     """
     with open(users_json_path, 'r', encoding='utf-8') as f:
         users_raw = json.load(f)
+
     users_list = users_raw.get('data', [])
+    if limit is not None:
+        users_list = users_list[:limit]
 
     with open(pubs_json_path, 'r', encoding='utf-8') as f:
         pubs_raw = json.load(f)
@@ -386,9 +389,12 @@ def process_users_and_create_relations(users_json_path: str | Path,
 # ---------------------------------------------------------
 # Final Output Generation (Enriched)
 # ---------------------------------------------------------
-def generate_enriched_markdowns(enriched_users: list[dict[str, Any]],
-                                 groups_data: dict[str, dict[str, str]],
-                                 df_relations: pd.DataFrame) -> None:
+def generate_enriched_markdowns(
+    enriched_users: list[dict[str, Any]],
+    groups_data: dict[str, dict[str, str]],
+    df_relations: pd.DataFrame,
+    output_dir: Path,
+) -> None:
     """
     Generate the final enriched Markdown files for users and research groups.
 
@@ -396,13 +402,14 @@ def generate_enriched_markdowns(enriched_users: list[dict[str, Any]],
         enriched_users: List of user dictionaries containing AI summaries.
         groups_data: Mapping of group data and AI summaries.
         df_relations: DataFrame containing relational group/user information.
+        output_dir: Directory where the generated Markdown files are written.
     """
-    ENRICHED_DIR.mkdir(
+    output_dir.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    users_md_path = ENRICHED_DIR / "enriched_api-users.md"
+    users_md_path = output_dir / "enriched_api-users.md"
     with open(users_md_path, 'w', encoding='utf-8') as f:
         f.write("# Researchers and Users (Enriched)\n\n")
 
@@ -471,7 +478,7 @@ def generate_enriched_markdowns(enriched_users: list[dict[str, Any]],
     print(f"Ficheiro de utilizadores guardado em: {users_md_path}")
 
     for slug, data in groups_data.items():
-        group_md_path = ENRICHED_DIR / f"enriched_{slug}.md"
+        group_md_path = output_dir / f"enriched_{slug}.md"
         with open(group_md_path, 'w', encoding='utf-8') as f:
             f.write(f"# Group: {slug.upper()}\n\n")
             f.write(f"**AI Short Description:** {data['description']}\n\n")
@@ -486,20 +493,24 @@ def generate_enriched_markdowns(enriched_users: list[dict[str, Any]],
 
         print(f"Ficheiro do grupo guardado em: {group_md_path}")
 
-def generate_projects_markdown(unique_projects: dict[str, dict[str, Any]],
-                                user_desc_map: dict[str, str]) -> None:
+def generate_projects_markdown(
+    unique_projects: dict[str, dict[str, Any]],
+    user_desc_map: dict[str, str],
+    output_dir: Path,
+) -> None:
     """
     Generate a unified Markdown file containing all unique research projects.
 
     Args:
         unique_projects: Mapping of project IDs to project metadata.
         user_desc_map: Mapping of user IDs to their AI-generated descriptions.
+        output_dir: Directory where the generated Markdown files are written.
     """
-    ENRICHED_DIR.mkdir(
+    output_dir.mkdir(
         parents=True,
         exist_ok=True,
     )
-    projs_md_path = ENRICHED_DIR / "enriched_projects_full.md"
+    projs_md_path = output_dir / "enriched_projects_full.md"
 
     with open(projs_md_path, 'w', encoding='utf-8') as f:
         f.write("# CISUC Research Projects\n\n")
@@ -567,8 +578,31 @@ def get_group_files_from_json(json_path: str | Path, base_folder_path: str | Pat
     return group_files_paths
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="Only process the first N groups/users/projects.",
+    )
+
+    args = parser.parse_args()
+    if args.limit is not None and args.limit < 1:
+        parser.error("--limit must be greater than zero")
+
+    output_dir = ENRICHED_DIR
+
+    if args.limit is not None:
+        output_dir = ENRICHED_DIR / "dry-run"
+
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+
+        print(f"Running smoke test with limit={args.limit}")
+        print(f"Writing output to {output_dir}")
+
     print("A iniciar pipeline de enriquecimento CISUC RAG...")
-    ensure_local_directories()
+    ensure_workspace_directories()
 
     # Configuration paths
     USERS_JSON = RAW_DIR / "api" / "api-users.json"
@@ -601,6 +635,8 @@ if __name__ == "__main__":
 
     # 1. Resolve group files
     group_files = get_group_files_from_json(USERS_JSON, PASTA_GRUPOS)
+    if args.limit is not None:
+        group_files = group_files[:args.limit]
     print(f"Ficheiros encontrados: {group_files}")
 
     # 2. Process groups and generate summaries
@@ -608,22 +644,29 @@ if __name__ == "__main__":
 
     # 3. Extract unique projects
     all_projects = extract_all_unique_projects(PROJS_JSON)
+    if args.limit is not None:
+        all_projects = dict(
+            list(all_projects.items())[:args.limit]
+        )
 
     # 4. Process users and create relational mapping
-    list_enriched_users, relations_df = process_users_and_create_relations(USERS_JSON, PUBS_JSON, PROJS_JSON, groups_info)
+    list_enriched_users, relations_df = process_users_and_create_relations(
+        USERS_JSON,
+        PUBS_JSON,
+        PROJS_JSON,
+        groups_info,
+        limit=args.limit,
+    )
 
     # 5. Build user description map for project linking
     user_descriptions = {user.get('id', ''): user.get('short_description', 'Associated Researcher.') for user in list_enriched_users}
 
     # 6. Save relational CSV
-    ENRICHED_DIR.mkdir(
+    output_dir.mkdir(
         parents=True,
         exist_ok=True,
     )
-    relations_path = (
-            ENRICHED_DIR
-            / "relacoes_grupo_investigador.csv"
-    )
+    relations_path = output_dir / "relacoes_grupo_investigador.csv"
 
     relations_df.to_csv(
         relations_path,
@@ -635,7 +678,17 @@ if __name__ == "__main__":
         f"{relations_path}"
     )
     # 7. Generate final Markdown archives
-    generate_enriched_markdowns(list_enriched_users, groups_info, relations_df)
-    generate_projects_markdown(all_projects, user_descriptions)
+    generate_enriched_markdowns(
+        list_enriched_users,
+        groups_info,
+        relations_df,
+        output_dir,
+    )
+
+    generate_projects_markdown(
+        all_projects,
+        user_descriptions,
+        output_dir,
+    )
 
     print("\nPipeline concluído com sucesso!")

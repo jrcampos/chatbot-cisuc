@@ -1,7 +1,13 @@
-name: CI
+name: CI - Preprocessing
 
 on:
   push:
+    paths:
+      - "preprocessing/**"
+      - "scripts/**"
+      - "config/**"
+      - ".github/workflows/ci_preprocessing.yaml"
+
   workflow_dispatch:
 
 permissions:
@@ -59,7 +65,7 @@ jobs:
         run: |
           echo "HOST_UID=$(id -u)" >> "$GITHUB_ENV"
           echo "HOST_GID=$(id -g)" >> "$GITHUB_ENV"
-          
+
       - name: Run limited preprocessing canary
         run: |
           ./scripts/run-full-processing.sh --limit 3

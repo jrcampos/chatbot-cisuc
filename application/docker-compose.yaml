@@ -1,11 +1,6 @@
 services:
   chromadb:
-    image: chromadb/chroma:latest
-    container_name: chromadb
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./chroma_data:/data
+    image: ${CHROMADB_FINAL_IMAGE}
     networks:
       - chatbot_net
     restart: unless-stopped 
@@ -13,9 +8,6 @@ services:
   rag_cisuc:
     build:
       context: ./RAG_CISUC
-    container_name: rag_cisuc
-    ports:
-      - "8001:8001"
     env_file:
       - ./config/docker_settings.env
       - .env
@@ -28,9 +20,8 @@ services:
   orchestrator:
     build:
       context: ./Orchestrator
-    container_name: orchestrator
     ports:
-      - "8080:8002"
+      - "${ORCHESTRATOR_HOST_PORT:?ORCHESTRATOR_HOST_PORT required}:8002"
     env_file:
       - ./config/docker_settings.env
       - .env
@@ -44,10 +35,9 @@ services:
     build:
       context: ./GUI
       args:
-        VITE_ORCHESTRATOR_API_ENDPOINT: "http://10.3.2.139:8080/chat"
-    container_name: gui
+        VITE_ORCHESTRATOR_API_ENDPOINT: ${VITE_ORCHESTRATOR_API_ENDPOINT:?endpoint required}
     ports:
-      - "80:80"
+      - "${GUI_HOST_PORT:?GUI_HOST_PORT required}:80"
     depends_on:
       - orchestrator
     networks:

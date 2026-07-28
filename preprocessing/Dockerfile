@@ -6,10 +6,11 @@ ENV PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-COPY preprocessing/requirements.txt .
+COPY requirements.txt .
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 RUN pip install --upgrade pip \
     && pip install -r requirements.txt \
     && python -m playwright install --with-deps chromium
 
-COPY . .
+COPY . ./preprocessing

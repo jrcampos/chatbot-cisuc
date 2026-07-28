@@ -205,10 +205,10 @@ def populate_vector_db() -> None:
     print(f"[INFO] Diretório ChromaDB: {CHROMA_DIR}")
 
     chroma_client = chromadb.HttpClient(
-        host="chromadb-build",
+        host="chromadb",
         port=8000,
     )
-    
+
     vector_store = Chroma(
         client=chroma_client,
         collection_name=chroma_collection,

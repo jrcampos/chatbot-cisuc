@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+set -a
+source config/system.env
+source config/preprocessing.env
+set +a
+
 # if local, source envs; otherwise they come from CI
 if [[ -f secrets/preprocessing.env ]]; then
   set -a
@@ -8,6 +13,13 @@ if [[ -f secrets/preprocessing.env ]]; then
   source secrets/preprocessing.env
   set +a
 fi
+
+if [[ -z "${CISUC_TOKEN:-}" ]]; then
+  echo "Error: CISUC_TOKEN is missing or empty" >&2
+  exit 1
+fi
+
+echo "CISUC_TOKEN is set; length=${#CISUC_TOKEN}"
 
 docker compose \
   -f preprocessing/docker-compose.yaml \

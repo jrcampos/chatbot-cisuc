@@ -1,6 +1,6 @@
 services:
   preprocessing:
-    image: ${PREPROCESSING_IMAGE:-cisuc-preprocessing:local}
+    image: ${PREPROCESSING_IMAGE}
     build:
       context: ..
       dockerfile: preprocessing/Dockerfile
@@ -24,7 +24,7 @@ services:
       - preprocessing
 
   chromadb-final:
-    image: ${CHROMADB_FINAL_IMAGE:-cisuc-chromadb-final:local}
+    image: ${CHROMADB_FINAL_IMAGE}
     build:
       context: ..
       dockerfile: preprocessing/Dockerfile.chromadb

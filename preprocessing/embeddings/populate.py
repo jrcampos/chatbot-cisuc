@@ -208,7 +208,7 @@ def populate_vector_db() -> None:
         host="chromadb-build",
         port=8000,
     )
-    
+
     vector_store = Chroma(
         client=chroma_client,
         collection_name=chroma_collection,

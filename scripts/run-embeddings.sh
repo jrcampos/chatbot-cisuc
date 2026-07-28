@@ -16,7 +16,6 @@ docker compose \
   -e OPENAI_API_KEY \
   -e MODEL_EMBEDDINGS \
   -e LLM_URL \
-  -e OLLAMA_MODEL_EMBEDDINGS \
   -e CHROMA_COLLECTION \
   preprocessing \
   python -m preprocessing.embeddings.populate "$@"

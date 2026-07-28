@@ -6,6 +6,13 @@ source config/system.env
 source config/preprocessing.env
 set +a
 
+if [[ -z "${CISUC_TOKEN:-}" ]]; then
+  echo "Error: CISUC_TOKEN is missing or empty" >&2
+  exit 1
+fi
+
+echo "CISUC_TOKEN is set; length=${#CISUC_TOKEN}"
+
 # if local, source envs; otherwise they come from CI
 if [[ -f secrets/preprocessing.env ]]; then
   set -a

@@ -126,4 +126,9 @@ jobs:
         run: |
           docker compose \
             -f preprocessing/docker-compose.yaml \
-            down --remove-orphans || true
+            down --remove-orphans
+
+          rm -rf .local
+
+          docker image rm "$PREPROCESSING_IMAGE" || true
+          docker image rm "$CHROMADB_FINAL_IMAGE" || true

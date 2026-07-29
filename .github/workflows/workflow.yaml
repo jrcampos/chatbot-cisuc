@@ -3,6 +3,9 @@ run-name: "${{ github.workflow }}"
 
 on:
   push:
+    branches:
+      - develop
+      - main
   pull_request:
     branches:
       - develop
@@ -61,4 +64,14 @@ jobs:
     needs:
       - application
     uses: ./.github/workflows/cdelivery_staging.yaml
+    secrets: inherit
+
+  production:
+    name: Deploy production
+    if: |
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main'
+    needs:
+      - application
+    uses: ./.github/workflows/cdelivery_production.yaml
     secrets: inherit

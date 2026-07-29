@@ -1,15 +1,8 @@
 name: Continuous Delivery - Development
 run-name: "${{ github.workflow }}"
 
-
 on:
-  workflow_run:
-    workflows:
-      - Continuous Integration - Application
-    types:
-      - completed
-    branches:
-      - develop
+  workflow_call:
 
 permissions:
   contents: read
@@ -27,13 +20,21 @@ env:
 
 jobs:
   deploy:
-    if: github.event.workflow_run.conclusion == 'success'
-
     runs-on: self-hosted
     timeout-minutes: 30
 
     env:
-      BUILD_SHA: ${{ github.event.workflow_run.head_sha }}
+      BUILD_SHA: ${{ github.sha }}
+
+      DEV_HOST: ${{ secrets.DEV_HOST }}
+      DEV_USER: ${{ secrets.DEV_USER }}
+      DEV_SSH_PRIVATE_KEY: ${{ secrets.DEV_SSH_PRIVATE_KEY }}
+
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OLLAMA_URL: ${{ secrets.OLLAMA_URL }}
+
+      GHCR_USERNAME: ${{ github.actor }}
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Configure SSH
@@ -41,40 +42,86 @@ jobs:
         run: |
           set -euo pipefail
 
-          mkdir -p ~/.ssh
+          mkdir -p "$HOME/.ssh"
 
-          echo "${{ secrets.DEV_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$DEV_SSH_PRIVATE_KEY" \
+            > "$HOME/.ssh/id_ed25519"
 
-          ssh-keyscan -H "${{ secrets.DEV_HOST }}" >> ~/.ssh/known_hosts
+          chmod 600 "$HOME/.ssh/id_ed25519"
+
+          ssh-keyscan -H "$DEV_HOST" \
+            >> "$HOME/.ssh/known_hosts"
+
+      - name: Encode deployment secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          {
+            echo "OPENAI_API_KEY_B64=$(printf '%s' "$OPENAI_API_KEY" | base64 | tr -d '\n')"
+            echo "OLLAMA_URL_B64=$(printf '%s' "$OLLAMA_URL" | base64 | tr -d '\n')"
+            echo "GHCR_TOKEN_B64=$(printf '%s' "$GHCR_TOKEN" | base64 | tr -d '\n')"
+          } >> "$GITHUB_ENV"
 
       - name: Deploy development environment
         shell: bash
         run: |
           set -euo pipefail
 
-          ssh "${{ secrets.DEV_USER }}@${{ secrets.DEV_HOST }}" <<EOF
+          ssh "$DEV_USER@$DEV_HOST" \
+            "BUILD_SHA='$BUILD_SHA' \
+             CHROMADB_REGISTRY_IMAGE='$CHROMADB_REGISTRY_IMAGE' \
+             RAG_REGISTRY_IMAGE='$RAG_REGISTRY_IMAGE' \
+             ORCHESTRATOR_REGISTRY_IMAGE='$ORCHESTRATOR_REGISTRY_IMAGE' \
+             GUI_REGISTRY_IMAGE='$GUI_REGISTRY_IMAGE' \
+             GHCR_USERNAME='$GHCR_USERNAME' \
+             GHCR_TOKEN_B64='$GHCR_TOKEN_B64' \
+             OPENAI_API_KEY_B64='$OPENAI_API_KEY_B64' \
+             OLLAMA_URL_B64='$OLLAMA_URL_B64' \
+             bash -s" <<'REMOTE_SCRIPT'
           set -euo pipefail
 
           cd /opt/CISUC_chatbot
 
-          git fetch origin
-          git checkout develop
-          git reset --hard ${BUILD_SHA}
+          echo "Deploying development commit: $BUILD_SHA"
 
-          docker login ghcr.io \
-            -u "${{ github.actor }}" \
-            -p "${{ secrets.GITHUB_TOKEN }}"
+          git fetch origin develop
+          git checkout develop
+          git reset --hard "$BUILD_SHA"
+
+          GHCR_TOKEN="$(
+            printf '%s' "$GHCR_TOKEN_B64" |
+              base64 --decode
+          )"
+
+          OPENAI_API_KEY="$(
+            printf '%s' "$OPENAI_API_KEY_B64" |
+              base64 --decode
+          )"
+
+          OLLAMA_URL="$(
+            printf '%s' "$OLLAMA_URL_B64" |
+              base64 --decode
+          )"
+
+          printf '%s' "$GHCR_TOKEN" |
+            docker login ghcr.io \
+              --username "$GHCR_USERNAME" \
+              --password-stdin
 
           export CHROMADB_FINAL_IMAGE="${CHROMADB_REGISTRY_IMAGE}:${BUILD_SHA}"
           export RAG_IMAGE="${RAG_REGISTRY_IMAGE}:${BUILD_SHA}"
           export ORCHESTRATOR_IMAGE="${ORCHESTRATOR_REGISTRY_IMAGE}:${BUILD_SHA}"
           export GUI_IMAGE="${GUI_REGISTRY_IMAGE}:${BUILD_SHA}"
 
+          export OPENAI_API_KEY
+          export OLLAMA_URL
+
+          export COMPOSE_PROJECT_NAME="chatbot-development"
+
           chmod +x scripts/*.sh
 
           ./scripts/run-application.sh up
 
           docker image prune -f
-
-          EOF
+          REMOTE_SCRIPT

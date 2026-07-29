@@ -14,8 +14,6 @@ env:
 
 jobs:
   preprocessing:
-    name: Build preprocessing images
-
     runs-on: self-hosted
     timeout-minutes: 120
 

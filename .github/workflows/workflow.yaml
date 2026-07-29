@@ -62,3 +62,12 @@ jobs:
       - application
     uses: ./.github/workflows/cdelivery_staging.yaml
     secrets: inherit
+
+  production:
+    if: |
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main'
+    needs:
+      - application
+    uses: ./.github/workflows/cdelivery_production.yaml
+    secrets: inherit

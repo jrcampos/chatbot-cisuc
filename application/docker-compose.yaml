@@ -50,6 +50,8 @@ services:
       context: ./GUI
       args:
         VITE_ORCHESTRATOR_API_ENDPOINT: ${VITE_ORCHESTRATOR_API_ENDPOINT:?VITE_ORCHESTRATOR_API_ENDPOINT must be defined}
+        VITE_BUILD_SHA: ${VITE_BUILD_SHA:?VITE_BUILD_SHA must be defined}
+        VITE_DEPLOY_ENV: ${VITE_DEPLOY_ENV:?VITE_DEPLOY_ENV must be defined}
     ports:
       - "${GUI_HOST_PORT:?GUI_HOST_PORT must be defined}:80"
     depends_on:

@@ -16,7 +16,8 @@ esac
 
 # Preserve values explicitly provided by preview deployment or CI.
 PROVIDED_VITE_ENDPOINT="${VITE_ORCHESTRATOR_API_ENDPOINT:-}"
-
+PROVIDED_VITE_BUILD_SHA="${VITE_BUILD_SHA:-}"
+PROVIDED_VITE_DEPLOY_ENV="${VITE_DEPLOY_ENV:-}"
 PROVIDED_CHROMADB_IMAGE="${CHROMADB_FINAL_IMAGE:-}"
 PROVIDED_RAG_IMAGE="${RAG_IMAGE:-}"
 PROVIDED_ORCHESTRATOR_IMAGE="${ORCHESTRATOR_IMAGE:-}"
@@ -40,6 +41,14 @@ fi
 # Explicit environment values take precedence over local files.
 if [[ -n "$PROVIDED_VITE_ENDPOINT" ]]; then
   export VITE_ORCHESTRATOR_API_ENDPOINT="$PROVIDED_VITE_ENDPOINT"
+fi
+
+if [[ -n "$PROVIDED_VITE_BUILD_SHA" ]]; then
+  export VITE_BUILD_SHA="$PROVIDED_VITE_BUILD_SHA"
+fi
+
+if [[ -n "$PROVIDED_VITE_DEPLOY_ENV" ]]; then
+  export VITE_DEPLOY_ENV="$PROVIDED_VITE_DEPLOY_ENV"
 fi
 
 if [[ -n "$PROVIDED_CHROMADB_IMAGE" ]]; then
@@ -71,6 +80,8 @@ fi
 : "${ORCHESTRATOR_IMAGE:?ORCHESTRATOR_IMAGE is missing or empty}"
 : "${GUI_IMAGE:?GUI_IMAGE is missing or empty}"
 : "${VITE_ORCHESTRATOR_API_ENDPOINT:?VITE_ORCHESTRATOR_API_ENDPOINT is missing or empty}"
+: "${VITE_BUILD_SHA:?VITE_BUILD_SHA is missing or empty}"
+: "${VITE_DEPLOY_ENV:?VITE_DEPLOY_ENV is missing or empty}"
 : "${OPENAI_API_KEY:?OPENAI_API_KEY is missing or empty}"
 : "${OLLAMA_URL:?OLLAMA_URL is missing or empty}"
 

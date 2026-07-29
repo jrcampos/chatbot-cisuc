@@ -42,6 +42,14 @@ function App() {
     null
   );
 
+  const buildSha = import.meta.env.VITE_BUILD_SHA;
+  const deployEnvironment = import.meta.env.VITE_DEPLOY_ENV;
+
+  const shortSha =
+      buildSha.length > 7
+        ? buildSha.slice(0, 7)
+        : buildSha;
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const handleSend = async () => {
@@ -330,15 +338,19 @@ function App() {
       </div>{" "}
       {/* End of new box wrapper */}
       <footer className="text-center p-4 text-xs text-muted-foreground border-t shrink-0">
-        <p>
-          © 2026 CISUC ChatBot. For demonstration purposes only. Verify critical
-          information.
-        </p>
-        <p>
-          Created by Arthur Sophiatti, Nuno Lourenço, and João R
-          Campos.
-        </p>
-      </footer>
+          <p>
+            © 2026 CISUC ChatBot. For demonstration purposes only. Verify critical
+            information.
+          </p>
+
+          <p>
+            Created by Arthur Sophiatti, Nuno Lourenço, and João R Campos.
+          </p>
+
+          <p className="mt-1">
+            {deployEnvironment} • {shortSha}
+          </p>
+        </footer>
     </div>
   );
 }

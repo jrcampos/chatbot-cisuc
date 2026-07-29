@@ -1,5 +1,6 @@
 services:
   gui:
+    build: !reset null
     ports: !reset []
 
     networks:
@@ -20,6 +21,7 @@ services:
       - traefik.http.services.gui-${PREVIEW_ID}.loadbalancer.server.port=80
 
   orchestrator:
+    build: !reset null
     ports: !reset []
 
     networks:
@@ -39,6 +41,9 @@ services:
       - traefik.http.middlewares.chat-strip-${PREVIEW_ID}.stripprefix.prefixes=/preview/${PREVIEW_ID}
 
       - traefik.http.services.chat-${PREVIEW_ID}.loadbalancer.server.port=8002
+
+  rag_cisuc:
+    build: !reset null
 
 networks:
   chatbot_net:

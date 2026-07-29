@@ -64,7 +64,6 @@ jobs:
     secrets: inherit
 
   production:
-    name: Deploy production
     if: |
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main'

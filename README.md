@@ -2,6 +2,7 @@
 
 ![CISUC Logo](GUI/src/assets/cisuc_logo.svg)
 
+
 A high-performance **Retrieval-Augmented Generation (RAG)** system designed specifically for **CISUC (Centre for Informatics and Systems of the University of Coimbra)**. 
 
 The system automates the collection of research data, enriches it using LLMs, and serves it through a hybrid search pipeline (Lexical + Vector) to provide accurate, context-aware answers about members, groups, projects, and news.

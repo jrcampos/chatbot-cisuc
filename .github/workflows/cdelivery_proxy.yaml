@@ -4,11 +4,7 @@ run-name: "${{ github.workflow }}"
 on:
   push:
     branches:
-      - main
-    paths:
-      - deployment/docker-compose.proxy.yaml
-      - deployment/traefik/**
-      - .github/workflows/deploy_proxy.yaml
+      - develop
 
   workflow_dispatch:
 

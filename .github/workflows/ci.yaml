@@ -3,7 +3,6 @@ run-name: "${{ github.workflow }}"
 
 on:
   push:
-  pull_request:
   workflow_dispatch:
 
 permissions:

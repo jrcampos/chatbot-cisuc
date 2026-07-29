@@ -11,6 +11,7 @@ Foram criados **99 testes unitários** com cobertura intermediária focada na va
 - **Tempo total**: ~3.4 segundos
 - **Cobertura geral**: 34%
 
+
 ### 📊 Cobertura por Módulo
 
 | Módulo | Cobertura | Linhas Testadas |

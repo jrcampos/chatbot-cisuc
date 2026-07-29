@@ -8,10 +8,6 @@ permissions:
   contents: read
   packages: write
 
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
   PREPROCESSING_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-preprocessing
   CHROMADB_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-chromadb

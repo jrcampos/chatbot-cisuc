@@ -25,6 +25,7 @@ jobs:
 
     env:
       BUILD_SHA: ${{ github.sha }}
+      REPOSITORY_URL: https://github.com/${{ github.repository }}.git
 
       DEV_HOST: ${{ secrets.DEV_HOST }}
       DEV_USER: ${{ secrets.DEV_USER }}
@@ -45,12 +46,17 @@ jobs:
           mkdir -p "$HOME/.ssh"
 
           printf '%s\n' "$DEV_SSH_PRIVATE_KEY" \
+            | tr -d '\r' \
             > "$HOME/.ssh/id_ed25519"
 
           chmod 600 "$HOME/.ssh/id_ed25519"
 
           ssh-keyscan -H "$DEV_HOST" \
             >> "$HOME/.ssh/known_hosts"
+
+          ssh-keygen -y \
+            -f "$HOME/.ssh/id_ed25519" \
+            >/dev/null
 
       - name: Encode deployment secrets
         shell: bash
@@ -70,6 +76,7 @@ jobs:
 
           ssh "$DEV_USER@$DEV_HOST" \
             "BUILD_SHA='$BUILD_SHA' \
+             REPOSITORY_URL='$REPOSITORY_URL' \
              CHROMADB_REGISTRY_IMAGE='$CHROMADB_REGISTRY_IMAGE' \
              RAG_REGISTRY_IMAGE='$RAG_REGISTRY_IMAGE' \
              ORCHESTRATOR_REGISTRY_IMAGE='$ORCHESTRATOR_REGISTRY_IMAGE' \
@@ -81,13 +88,22 @@ jobs:
              bash -s" <<'REMOTE_SCRIPT'
           set -euo pipefail
 
-          cd /opt/CISUC_chatbot
+          DEPLOY_DIR="$HOME/CISUC_chatbot"
 
-          echo "Deploying development commit: $BUILD_SHA"
+          if [[ ! -d "$DEPLOY_DIR/.git" ]]; then
+            echo "Repository not found. Cloning..."
+            rm -rf "$DEPLOY_DIR"
+            git clone "$REPOSITORY_URL" "$DEPLOY_DIR"
+          fi
 
-          git fetch origin develop
-          git checkout develop
+          cd "$DEPLOY_DIR"
+
+          echo "Checking out development commit: $BUILD_SHA"
+
+          git fetch --prune origin
+          git checkout -B develop "$BUILD_SHA"
           git reset --hard "$BUILD_SHA"
+          git clean -fd
 
           GHCR_TOKEN="$(
             printf '%s' "$GHCR_TOKEN_B64" |
@@ -120,6 +136,8 @@ jobs:
           export COMPOSE_PROJECT_NAME="chatbot-development"
 
           chmod +x scripts/*.sh
+
+          echo "Deploying development commit: $BUILD_SHA"
 
           ./scripts/run-application.sh up
 

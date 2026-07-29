@@ -21,6 +21,8 @@ PROVIDED_CHROMADB_IMAGE="${CHROMADB_FINAL_IMAGE:-}"
 PROVIDED_RAG_IMAGE="${RAG_IMAGE:-}"
 PROVIDED_ORCHESTRATOR_IMAGE="${ORCHESTRATOR_IMAGE:-}"
 PROVIDED_GUI_IMAGE="${GUI_IMAGE:-}"
+PROVIDED_OPENAI_API_KEY="${OPENAI_API_KEY:-}"
+PROVIDED_OLLAMA_URL="${OLLAMA_URL:-}"
 
 set -a
 source config/chatbot-common.env
@@ -56,6 +58,14 @@ if [[ -n "$PROVIDED_GUI_IMAGE" ]]; then
   export GUI_IMAGE="$PROVIDED_GUI_IMAGE"
 fi
 
+if [[ -n "$PROVIDED_OPENAI_API_KEY" ]]; then
+  export OPENAI_API_KEY="$PROVIDED_OPENAI_API_KEY"
+fi
+
+if [[ -n "$PROVIDED_OLLAMA_URL" ]]; then
+  export OLLAMA_URL="$PROVIDED_OLLAMA_URL"
+fi
+
 : "${CHROMADB_FINAL_IMAGE:?CHROMADB_FINAL_IMAGE is missing or empty}"
 : "${RAG_IMAGE:?RAG_IMAGE is missing or empty}"
 : "${ORCHESTRATOR_IMAGE:?ORCHESTRATOR_IMAGE is missing or empty}"
@@ -88,7 +98,7 @@ case "$COMMAND" in
     ;;
 
   up)
-    "${DOCKER_COMPOSE[@]}" up -d
+    "${DOCKER_COMPOSE[@]}" up -d --pull always
     ;;
 
   up-build)

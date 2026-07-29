@@ -1,4 +1,4 @@
-name: CI - Preprocessing
+name: Continuous Integration - Preprocessing
 
 on:
   push:

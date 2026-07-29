@@ -185,7 +185,7 @@ def populate_vector_db() -> None:
     elif llm_provider == "ollama":
         rag_model = os.environ["MODEL_EMBEDDINGS"]
 
-        ollama_url = os.environ["LLM_URL"]
+        ollama_url = os.environ["OLLAMA_URL"]
 
         embeddings = OllamaEmbeddings(
             base_url=ollama_url,

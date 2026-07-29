@@ -1,0 +1,110 @@
+name: Deploy Preview
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - closed
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  CHROMADB_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-chromadb
+  RAG_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-rag
+  ORCHESTRATOR_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-orchestrator
+  GUI_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-gui
+
+jobs:
+  deploy:
+    if: |
+      github.event.action != 'closed' &&
+      github.event.pull_request.base.ref == 'develop'
+
+    runs-on: self-hosted
+    timeout-minutes: 20
+
+    env:
+      BUILD_SHA: ${{ github.event.pull_request.head.sha }}
+      PREVIEW_ID: ${{ github.event.pull_request.number }}
+      COMPOSE_PROJECT_NAME: pr${{ github.event.pull_request.number }}
+      VITE_ORCHESTRATOR_API_ENDPOINT: /preview/${{ github.event.pull_request.number }}/chat
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set image names
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          {
+            echo "CHROMADB_FINAL_IMAGE=$CHROMADB_REGISTRY_IMAGE:$BUILD_SHA"
+            echo "RAG_IMAGE=$RAG_REGISTRY_IMAGE:$BUILD_SHA"
+            echo "ORCHESTRATOR_IMAGE=$ORCHESTRATOR_REGISTRY_IMAGE:$BUILD_SHA"
+            echo "GUI_IMAGE=$GUI_REGISTRY_IMAGE:$BUILD_SHA"
+          } >> "$GITHUB_ENV"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull preview images
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker pull "$CHROMADB_FINAL_IMAGE"
+          docker pull "$RAG_IMAGE"
+          docker pull "$ORCHESTRATOR_IMAGE"
+          docker pull "$GUI_IMAGE"
+
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh
+
+      - name: Deploy preview
+        run: |
+          ./scripts/run-application.sh \
+            up \
+            application/docker-compose.preview.yaml
+
+  cleanup:
+    if: |
+      github.event.action == 'closed' &&
+      github.event.pull_request.base.ref == 'develop'
+
+    runs-on: self-hosted
+    timeout-minutes: 10
+
+    env:
+      PREVIEW_ID: ${{ github.event.pull_request.number }}
+      COMPOSE_PROJECT_NAME: pr${{ github.event.pull_request.number }}
+      VITE_ORCHESTRATOR_API_ENDPOINT: /preview/${{ github.event.pull_request.number }}/chat
+
+    steps:
+      - name: Check out default branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh
+
+      - name: Remove preview
+        run: |
+          ./scripts/run-application.sh \
+            down \
+            application/docker-compose.preview.yaml

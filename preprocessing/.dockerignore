@@ -1,5 +1,4 @@
-config/system.env
-config/preprocessing.env
+config/?
 secrets/*
 .local/*
 scripts/*

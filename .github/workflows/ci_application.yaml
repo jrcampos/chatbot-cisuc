@@ -1,0 +1,99 @@
+name: CI - Application
+
+on:
+  workflow_run:
+    workflows:
+      - CI - Preprocessing
+    types:
+      - completed
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: application-ci-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+env:
+  CHROMADB_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-chromadb
+  RAG_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-rag
+  ORCHESTRATOR_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-orchestrator
+  GUI_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-gui
+
+jobs:
+  application:
+    if: github.event.workflow_run.conclusion == 'success'
+
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Load configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+
+          source config/chatbot-common.env
+          source config/chatbot.env
+
+          set +a
+
+          {
+            echo "RAG_IMAGE=$RAG_IMAGE"
+            echo "ORCHESTRATOR_IMAGE=$ORCHESTRATOR_IMAGE"
+            echo "GUI_IMAGE=$GUI_IMAGE"
+            echo "CHROMADB_FINAL_IMAGE=$CHROMADB_REGISTRY_IMAGE:${{ github.event.workflow_run.head_sha }}"
+          } >> "$GITHUB_ENV"
+
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull Chroma image
+        run: docker pull "$CHROMADB_FINAL_IMAGE"
+
+      - name: Build application images
+        run: ./scripts/run-application.sh build
+
+      - name: Tag application images
+        shell: bash
+        env:
+          BUILD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          docker tag \
+            "$RAG_IMAGE" \
+            "$RAG_REGISTRY_IMAGE:$BUILD_SHA"
+
+          docker tag \
+            "$ORCHESTRATOR_IMAGE" \
+            "$ORCHESTRATOR_REGISTRY_IMAGE:$BUILD_SHA"
+
+          docker tag \
+            "$GUI_IMAGE" \
+            "$GUI_REGISTRY_IMAGE:$BUILD_SHA"
+
+      - name: Push application images
+        shell: bash
+        env:
+          BUILD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          docker push "$RAG_REGISTRY_IMAGE:$BUILD_SHA"
+          docker push "$ORCHESTRATOR_REGISTRY_IMAGE:$BUILD_SHA"
+          docker push "$GUI_REGISTRY_IMAGE:$BUILD_SHA"

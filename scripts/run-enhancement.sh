@@ -2,7 +2,7 @@
 set -euo pipefail
 
 set -a
-source config/system.env
+source config/chatbot-common.env
 source config/preprocessing.env
 set +a
 

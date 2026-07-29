@@ -70,6 +70,14 @@ jobs:
         run: docker pull "$CHROMADB_FINAL_IMAGE"
 
       - name: Build application images
+        env:
+          VITE_BUILD_SHA: ${{ github.sha }}
+          VITE_DEPLOY_ENV: >-
+            ${{ github.ref_name == 'main'
+                && 'Production'
+                || github.ref_name == 'develop'
+                && 'Staging'
+                || 'Preview' }}
         run: ./scripts/run-application.sh build
 
       - name: Tag application images

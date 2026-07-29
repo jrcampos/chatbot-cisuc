@@ -2,12 +2,7 @@ name: Continuous Delivery and Preview
 run-name: "${{ github.workflow }}"
 
 on:
-  pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - closed
+  workflow_call:
 
 permissions:
   contents: read
@@ -25,24 +20,19 @@ env:
 
 jobs:
   deploy:
-    if: |
-      github.event.action != 'closed' &&
-      github.event.pull_request.base.ref == 'develop'
-
     runs-on: self-hosted
     timeout-minutes: 20
 
     env:
-      BUILD_SHA: ${{ github.event.pull_request.head.sha }}
+      BUILD_SHA: ${{ github.sha }}
       PREVIEW_ID: ${{ github.event.pull_request.number }}
       COMPOSE_PROJECT_NAME: pr${{ github.event.pull_request.number }}
-      # VITE_ORCHESTRATOR_API_ENDPOINT: /preview/${{ github.event.pull_request.number }}/chat
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.sha }}
 
       - name: Set image names
         shell: bash
@@ -77,6 +67,7 @@ jobs:
         run: chmod +x scripts/*.sh
 
       - name: Deploy preview
+        id: deploy_preview
         run: |
           ./scripts/run-application.sh \
             up \
@@ -84,34 +75,6 @@ jobs:
 
       - name: Roll back failed preview deployment
         if: ${{ failure() && steps.deploy_preview.outcome == 'failure' }}
-        run: |
-          ./scripts/run-application.sh \
-            down \
-            application/docker-compose.preview.yaml
-
-  cleanup:
-    if: |
-      github.event.action == 'closed' &&
-      github.event.pull_request.base.ref == 'develop'
-
-    runs-on: self-hosted
-    timeout-minutes: 10
-
-    env:
-      PREVIEW_ID: ${{ github.event.pull_request.number }}
-      COMPOSE_PROJECT_NAME: pr${{ github.event.pull_request.number }}
-      VITE_ORCHESTRATOR_API_ENDPOINT: /preview/${{ github.event.pull_request.number }}/chat
-
-    steps:
-      - name: Check out default branch
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-
-      - name: Make scripts executable
-        run: chmod +x scripts/*.sh
-
-      - name: Remove preview
         run: |
           ./scripts/run-application.sh \
             down \

@@ -60,5 +60,5 @@ jobs:
       github.ref == 'refs/heads/develop'
     needs:
       - application
-    uses: ./.github/workflows/cdelivery_development.yaml
+    uses: ./.github/workflows/cdelivery_staging.yaml
     secrets: inherit

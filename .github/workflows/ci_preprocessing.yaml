@@ -23,6 +23,7 @@ jobs:
 
     runs-on: self-hosted
     timeout-minutes: 120
+
     env:
       CISUC_TOKEN: ${{ secrets.CISUC_TOKEN }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -137,4 +138,4 @@ jobs:
 
           # docker system prune -af --volumes || true
 
-          rm -rf .local
+          # rm -rf .local

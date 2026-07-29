@@ -1,0 +1,111 @@
+name: Continuous Integration - Application
+run-name: "${{ github.workflow }}"
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  CHROMADB_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-chromadb
+  RAG_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-rag
+  ORCHESTRATOR_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-orchestrator
+  GUI_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-gui
+
+jobs:
+  application:
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OLLAMA_URL: ${{ secrets.OLLAMA_URL }}
+
+    steps:
+      - name: Check out commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Verify checkout
+        run: |
+          git rev-parse HEAD
+          git log --oneline -1
+
+      - name: Dump event
+        run: |
+          cat "$GITHUB_EVENT_PATH"
+
+      - name: Load configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+
+          source config/chatbot-common.env
+          source config/chatbot.env
+
+          set +a
+
+          {
+            echo "RAG_IMAGE=$RAG_IMAGE"
+            echo "ORCHESTRATOR_IMAGE=$ORCHESTRATOR_IMAGE"
+            echo "GUI_IMAGE=$GUI_IMAGE"
+            echo "CHROMADB_FINAL_IMAGE=$CHROMADB_REGISTRY_IMAGE:${{ github.sha }}"
+          } >> "$GITHUB_ENV"
+
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull Chroma image
+        run: docker pull "$CHROMADB_FINAL_IMAGE"
+
+      - name: Build application images
+        env:
+          VITE_BUILD_SHA: ${{ github.sha }}
+          VITE_DEPLOY_ENV: >-
+            ${{ github.ref_name == 'main'
+                && 'Production'
+                || github.ref_name == 'develop'
+                && 'Staging'
+                || 'Preview' }}
+        run: ./scripts/run-application.sh build
+
+      - name: Tag application images
+        shell: bash
+        env:
+          BUILD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          docker tag \
+            "$RAG_IMAGE" \
+            "$RAG_REGISTRY_IMAGE:$BUILD_SHA"
+
+          docker tag \
+            "$ORCHESTRATOR_IMAGE" \
+            "$ORCHESTRATOR_REGISTRY_IMAGE:$BUILD_SHA"
+
+          docker tag \
+            "$GUI_IMAGE" \
+            "$GUI_REGISTRY_IMAGE:$BUILD_SHA"
+
+      - name: Push application images
+        shell: bash
+        env:
+          BUILD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          docker push "$RAG_REGISTRY_IMAGE:$BUILD_SHA"
+          docker push "$ORCHESTRATOR_REGISTRY_IMAGE:$BUILD_SHA"
+          docker push "$GUI_REGISTRY_IMAGE:$BUILD_SHA"

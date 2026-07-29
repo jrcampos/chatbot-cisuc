@@ -1,53 +1,59 @@
 services:
   chromadb:
-    image: chromadb/chroma:latest
-    container_name: chromadb
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./chroma_data:/data
+    image: ${CHROMADB_FINAL_IMAGE:?CHROMADB_FINAL_IMAGE must be defined}
     networks:
       - chatbot_net
-    restart: unless-stopped 
+    restart: unless-stopped
 
   rag_cisuc:
+    image: ${RAG_IMAGE:?RAG_IMAGE must be defined}
     build:
       context: ./RAG_CISUC
-    container_name: rag_cisuc
-    ports:
-      - "8001:8001"
-    env_file:
-      - ./config/docker_settings.env
-      - .env
+    environment:
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: "8000"
+      RAG_MAX_RETRYS: ${RAG_MAX_RETRYS:?RAG_MAX_RETRYS must be defined}
+      RAG_RETRY_DELAY: ${RAG_RETRY_DELAY:?RAG_RETRY_DELAY must be defined}
+      LLM_PROVIDER: ${LLM_PROVIDER:?LLM_PROVIDER must be defined}
+      MODEL_EMBEDDINGS: ${MODEL_EMBEDDINGS:?MODEL_EMBEDDINGS must be defined}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY must be defined}
+      OLLAMA_URL: ${OLLAMA_URL:?OLLAMA_URL must be defined}
+    depends_on:
+      - chromadb
     networks:
       - chatbot_net
-    depends_on:             
-      - chromadb
-    restart: unless-stopped 
+    restart: unless-stopped
 
   orchestrator:
+    image: ${ORCHESTRATOR_IMAGE:?ORCHESTRATOR_IMAGE must be defined}
     build:
       context: ./Orchestrator
-    container_name: orchestrator
+    environment:
+      RAG_API_URL: http://rag_cisuc:8001/query
+      RAG_TOP_K: ${RAG_TOP_K:?RAG_TOP_K must be defined}
+      LLM_PROVIDER: ${LLM_PROVIDER:?LLM_PROVIDER must be defined}
+      MODEL_SLM: ${MODEL_SLM:?MODEL_SLM must be defined}
+      MODEL_CHAT: ${MODEL_CHAT:?MODEL_CHAT must be defined}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY must be defined}
+      OLLAMA_URL: ${OLLAMA_URL:?OLLAMA_URL must be defined}
     ports:
-      - "8080:8002"
-    env_file:
-      - ./config/docker_settings.env
-      - .env
+      - "${ORCHESTRATOR_HOST_PORT:?ORCHESTRATOR_HOST_PORT must be defined}:8002"
+    depends_on:
+      - rag_cisuc
     networks:
       - chatbot_net
-    depends_on:              # Adicionado
-      - rag_cisuc
-    restart: unless-stopped 
+    restart: unless-stopped
 
   gui:
+    image: ${GUI_IMAGE:?GUI_IMAGE must be defined}
     build:
       context: ./GUI
       args:
-        VITE_ORCHESTRATOR_API_ENDPOINT: "http://10.3.2.139:8080/chat"
-    container_name: gui
+        VITE_ORCHESTRATOR_API_ENDPOINT: ${VITE_ORCHESTRATOR_API_ENDPOINT:?VITE_ORCHESTRATOR_API_ENDPOINT must be defined}
+        VITE_BUILD_SHA: ${VITE_BUILD_SHA:?VITE_BUILD_SHA must be defined}
+        VITE_DEPLOY_ENV: ${VITE_DEPLOY_ENV:?VITE_DEPLOY_ENV must be defined}
     ports:
-      - "80:80"
+      - "${GUI_HOST_PORT:?GUI_HOST_PORT must be defined}:80"
     depends_on:
       - orchestrator
     networks:
@@ -56,4 +62,3 @@ services:
 
 networks:
   chatbot_net:
-    driver: bridge

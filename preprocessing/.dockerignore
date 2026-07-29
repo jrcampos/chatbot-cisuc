@@ -1,0 +1,6 @@
+config/?
+secrets/*
+.local/*
+scripts/*
+application/*
+tests/*

@@ -1,0 +1,80 @@
+name: Continuous Delivery and Preview
+run-name: "${{ github.workflow }}"
+
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  CHROMADB_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-chromadb
+  RAG_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-rag
+  ORCHESTRATOR_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-orchestrator
+  GUI_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-gui
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    timeout-minutes: 20
+
+    env:
+      BUILD_SHA: ${{ github.sha }}
+      PREVIEW_ID: ${{ github.event.pull_request.number }}
+      COMPOSE_PROJECT_NAME: pr${{ github.event.pull_request.number }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OLLAMA_URL: ${{ secrets.OLLAMA_URL }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set image names
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          {
+            echo "CHROMADB_FINAL_IMAGE=$CHROMADB_REGISTRY_IMAGE:$BUILD_SHA"
+            echo "RAG_IMAGE=$RAG_REGISTRY_IMAGE:$BUILD_SHA"
+            echo "ORCHESTRATOR_IMAGE=$ORCHESTRATOR_REGISTRY_IMAGE:$BUILD_SHA"
+            echo "GUI_IMAGE=$GUI_REGISTRY_IMAGE:$BUILD_SHA"
+          } >> "$GITHUB_ENV"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull preview images
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker pull "$CHROMADB_FINAL_IMAGE"
+          docker pull "$RAG_IMAGE"
+          docker pull "$ORCHESTRATOR_IMAGE"
+          docker pull "$GUI_IMAGE"
+
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh
+
+      - name: Deploy preview
+        id: deploy_preview
+        run: |
+          ./scripts/run-application.sh \
+            up \
+            application/docker-compose.preview.yaml
+
+      - name: Roll back failed preview deployment
+        if: ${{ failure() && steps.deploy_preview.outcome == 'failure' }}
+        run: |
+          ./scripts/run-application.sh \
+            down \
+            application/docker-compose.preview.yaml

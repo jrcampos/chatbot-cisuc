@@ -1,35 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_ROOT="$(
-  cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd
-)"
-
-cd "$PROJECT_ROOT"
-
-export CISUC_LOCAL_ROOT="${CISUC_LOCAL_ROOT:-$PROJECT_ROOT/.local}"
-
-ENV_FILE="${CISUC_ENHANCEMENT_ENV_FILE:-$PROJECT_ROOT/secrets/enhancement.env}"
-
-if [[ ! -f "$ENV_FILE" ]]; then
-  echo "Enhancement environment file not found: $ENV_FILE" >&2
-  exit 2
-fi
-
 set -a
-# shellcheck disable=SC1090
-source "$ENV_FILE"
+source config/chatbot-common.env
+source config/preprocessing.env
 set +a
 
-if [[ -z "${OPENAI_API_KEY:-}" ]]; then
-  echo "OPENAI_API_KEY is not defined in $ENV_FILE" >&2
-  exit 2
+# if local, source envs; otherwise they come from CI
+if [[ -f secrets/preprocessing.env ]]; then
+  set -a
+  source secrets/chatbot-common.env
+  source secrets/preprocessing.env
+  set +a
 fi
 
-mkdir -p \
-  "$CISUC_LOCAL_ROOT/raw" \
-  "$CISUC_LOCAL_ROOT/enriched" \
-  "$CISUC_LOCAL_ROOT/chroma" \
-  "$CISUC_LOCAL_ROOT/logs"
-
-python -m preprocessing.enhancement.enhancement "$@"
+docker compose \
+    -f preprocessing/docker-compose.yaml \
+    exec \
+    -e OPENAI_API_KEY \
+    -e ENHANCEMENT_MODEL \
+    -e ENHANCEMENT_MAX_WORKERS \
+    preprocessing \
+    python -m preprocessing.enhancement.enhancement "$@"

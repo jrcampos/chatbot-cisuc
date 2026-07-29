@@ -21,7 +21,8 @@ from pathlib import Path
 from preprocessing.paths import (
     RAW_DIR,
     ENRICHED_DIR,
-    ensure_local_directories,
+    CHROMA_DIR,
+    ensure_workspace_directories,
 )
 
 def populate_vector_db() -> None:
@@ -35,7 +36,7 @@ def populate_vector_db() -> None:
     4. Deduplicating chunks using MD5 hashing.
     5. Batch uploading vectors to the ChromaDB instance using dynamic Embeddings.
     """
-    ensure_local_directories()
+    ensure_workspace_directories()
     
     print("A iniciar o Chunking Estrutural de todos os ficheiros...")
 
@@ -158,7 +159,7 @@ def populate_vector_db() -> None:
     print(f"\nTotal: {len(todos_os_chunks)} chunks gerados após divisões e injeção de contexto.")
 
     # 4. Configure Embeddings and Connect to ChromaDB
-    llm_provider = os.getenv("LLM_PROVIDER", "ollama").strip().lower()
+    llm_provider = os.environ["LLM_PROVIDER"].strip().lower()
 
     print(
         "\nA configurar Motor de Embeddings "
@@ -166,7 +167,7 @@ def populate_vector_db() -> None:
     )
 
     if llm_provider == "openai":
-        openai_api_key = os.getenv("OPENAI_API_KEY")
+        openai_api_key = os.environ["OPENAI_API_KEY"]
 
         if not openai_api_key:
             raise RuntimeError(
@@ -174,10 +175,7 @@ def populate_vector_db() -> None:
                 "mas LLM_PROVIDER=openai."
             )
 
-        rag_model = os.getenv(
-            "OPENAI_MODEL_EMBEDDINGS",
-            "text-embedding-3-small",
-        )
+        rag_model = os.environ["MODEL_EMBEDDINGS"]
 
         embeddings = OpenAIEmbeddings(
             model=rag_model,
@@ -185,15 +183,9 @@ def populate_vector_db() -> None:
         )
 
     elif llm_provider == "ollama":
-        rag_model = os.getenv(
-            "OLLAMA_MODEL_EMBEDDINGS",
-            "paraphrase-multilingual:278m-mpnet-base-v2-fp16",
-        )
+        rag_model = os.environ["MODEL_EMBEDDINGS"]
 
-        ollama_url = os.getenv(
-            "OLLAMA_URL",
-            "http://10.3.1.241:8080",
-        )
+        ollama_url = os.environ["OLLAMA_URL"]
 
         embeddings = OllamaEmbeddings(
             base_url=ollama_url,
@@ -208,34 +200,14 @@ def populate_vector_db() -> None:
 
     print(f"[INFO] Modelo de embeddings: {rag_model}")
 
-    chroma_host = os.getenv("CHROMA_HOST", "localhost")
-    chroma_port = int(os.getenv("CHROMA_PORT", "8000"))
-    chroma_collection = os.getenv(
-        "CHROMA_COLLECTION",
-        "cisuc_rag",
-    )
+    chroma_collection = os.environ["CHROMA_COLLECTION"]
 
-    print(
-        f"[INFO] A ligar ao ChromaDB em "
-        f"{chroma_host}:{chroma_port}..."
-    )
+    print(f"[INFO] Diretório ChromaDB: {CHROMA_DIR}")
 
     chroma_client = chromadb.HttpClient(
-        host=chroma_host,
-        port=chroma_port,
+        host="chromadb",
+        port=8000,
     )
-
-    try:
-        chroma_client.delete_collection(chroma_collection)
-        print(
-            "[INFO] Coleção antiga apagada com sucesso "
-            "(prevenção de conflito de dimensões)."
-        )
-    except Exception:
-        print(
-            f"[INFO] A coleção '{chroma_collection}' "
-            "não existia."
-        )
 
     vector_store = Chroma(
         client=chroma_client,

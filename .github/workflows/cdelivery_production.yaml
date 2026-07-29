@@ -1,0 +1,159 @@
+name: Continuous Delivery - Production
+run-name: "${{ github.workflow }}"
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  CHROMADB_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-chromadb
+  RAG_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-rag
+  ORCHESTRATOR_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-orchestrator
+  GUI_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-gui
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    env:
+      BUILD_SHA: ${{ github.sha }}
+      REPOSITORY_URL: https://github.com/${{ github.repository }}.git
+
+      PROD_HOST: ${{ secrets.PROD_HOST }}
+      PROD_USER: ${{ secrets.PROD_USER }}
+      PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OLLAMA_URL: ${{ secrets.OLLAMA_URL }}
+
+      GHCR_USERNAME: ${{ github.actor }}
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$HOME/.ssh"
+
+          printf '%s\n' "$PROD_SSH_PRIVATE_KEY" \
+            | tr -d '\r' \
+            > "$HOME/.ssh/id_ed25519"
+
+          chmod 600 "$HOME/.ssh/id_ed25519"
+
+          ssh-keyscan -H "$PROD_HOST" \
+            >> "$HOME/.ssh/known_hosts"
+
+          ssh-keygen -y \
+            -f "$HOME/.ssh/id_ed25519" \
+            >/dev/null
+
+      - name: Encode deployment secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          {
+            echo "OPENAI_API_KEY_B64=$(printf '%s' "$OPENAI_API_KEY" | base64 | tr -d '\n')"
+            echo "OLLAMA_URL_B64=$(printf '%s' "$OLLAMA_URL" | base64 | tr -d '\n')"
+            echo "GHCR_TOKEN_B64=$(printf '%s' "$GHCR_TOKEN" | base64 | tr -d '\n')"
+          } >> "$GITHUB_ENV"
+
+      - name: Deploy production environment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ssh "$PROD_USER@$PROD_HOST" \
+            "BUILD_SHA='$BUILD_SHA' \
+             REPOSITORY_URL='$REPOSITORY_URL' \
+             CHROMADB_REGISTRY_IMAGE='$CHROMADB_REGISTRY_IMAGE' \
+             RAG_REGISTRY_IMAGE='$RAG_REGISTRY_IMAGE' \
+             ORCHESTRATOR_REGISTRY_IMAGE='$ORCHESTRATOR_REGISTRY_IMAGE' \
+             GUI_REGISTRY_IMAGE='$GUI_REGISTRY_IMAGE' \
+             GHCR_USERNAME='$GHCR_USERNAME' \
+             GHCR_TOKEN_B64='$GHCR_TOKEN_B64' \
+             OPENAI_API_KEY_B64='$OPENAI_API_KEY_B64' \
+             OLLAMA_URL_B64='$OLLAMA_URL_B64' \
+             bash -s" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+
+          DEPLOY_DIR="$HOME/CISUC_chatbot"
+
+          if [[ ! -d "$DEPLOY_DIR/.git" ]]; then
+            echo "Repository not found. Cloning..."
+            rm -rf "$DEPLOY_DIR"
+            git clone "$REPOSITORY_URL" "$DEPLOY_DIR"
+          fi
+
+          cd "$DEPLOY_DIR"
+
+          echo "Checking out production commit: $BUILD_SHA"
+
+          git fetch --prune origin
+          git checkout main
+          git reset --hard "$BUILD_SHA"
+          git clean -fd
+
+          GHCR_TOKEN="$(
+            printf '%s' "$GHCR_TOKEN_B64" |
+              base64 --decode
+          )"
+
+          OPENAI_API_KEY="$(
+            printf '%s' "$OPENAI_API_KEY_B64" |
+              base64 --decode
+          )"
+
+          OLLAMA_URL="$(
+            printf '%s' "$OLLAMA_URL_B64" |
+              base64 --decode
+          )"
+
+          printf '%s' "$GHCR_TOKEN" |
+            docker login ghcr.io \
+              --username "$GHCR_USERNAME" \
+              --password-stdin
+
+          export CHROMADB_FINAL_IMAGE="${CHROMADB_REGISTRY_IMAGE}:${BUILD_SHA}"
+          export RAG_IMAGE="${RAG_REGISTRY_IMAGE}:${BUILD_SHA}"
+          export ORCHESTRATOR_IMAGE="${ORCHESTRATOR_REGISTRY_IMAGE}:${BUILD_SHA}"
+          export GUI_IMAGE="${GUI_REGISTRY_IMAGE}:${BUILD_SHA}"
+
+          export OPENAI_API_KEY
+          export OLLAMA_URL
+
+          export COMPOSE_PROJECT_NAME="chatbot-production"
+
+          chmod +x scripts/*.sh
+
+          echo "Deploying production commit: $BUILD_SHA"
+
+          ./scripts/run-application.sh up application/docker-compose.deployment.yaml
+
+          promote() {
+            local image="$1"
+            local tag="$2"
+
+            docker tag "${image}:${BUILD_SHA}" "${image}:${tag}"
+            docker push "${image}:${tag}"
+          }
+
+          promote "$CHROMADB_REGISTRY_IMAGE" "production"
+          promote "$RAG_REGISTRY_IMAGE" "production"
+          promote "$ORCHESTRATOR_REGISTRY_IMAGE" "production"
+          promote "$GUI_REGISTRY_IMAGE" "production"
+
+          docker image prune -f
+          REMOTE_SCRIPT
+          

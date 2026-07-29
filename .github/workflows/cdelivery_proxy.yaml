@@ -1,0 +1,35 @@
+name: Deploy Proxy
+run-name: "${{ github.workflow }}"
+
+on:
+  push:
+    branches:
+      - develop
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-proxy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Deploy Traefik proxy
+        run: |
+          docker compose \
+            -p preview-proxy \
+            -f deployment/docker-compose.proxy.yaml \
+            up -d
+
+      - name: Remove unused images
+        run: docker image prune -f

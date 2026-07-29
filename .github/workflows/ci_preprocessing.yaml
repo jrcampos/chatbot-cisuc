@@ -1,0 +1,137 @@
+name: Continuous Integration - Preprocessing
+run-name: "${{ github.workflow }}"
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  PREPROCESSING_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-preprocessing
+  CHROMADB_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-chromadb
+
+jobs:
+  preprocessing:
+    runs-on: self-hosted
+    timeout-minutes: 120
+
+    env:
+      CISUC_TOKEN: ${{ secrets.CISUC_TOKEN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OLLAMA_URL: ${{ secrets.OLLAMA_URL }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Load configuration
+        shell: bash
+        run: |
+          set -a
+
+          source config/chatbot-common.env
+          source config/preprocessing.env
+
+          set +a
+
+          {
+            echo "PREPROCESSING_IMAGE=$PREPROCESSING_IMAGE"
+            echo "CHROMADB_FINAL_IMAGE=$CHROMADB_FINAL_IMAGE"
+            echo "REUSE_LOCAL_PREPROCESSING=$REUSE_LOCAL_PREPROCESSING"
+          } >> "$GITHUB_ENV"
+
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh
+
+      - name: Create local workspace
+        run: |
+          mkdir -p \
+            .local/raw \
+            .local/enriched \
+            .local/chroma
+      - name: Configure runner identity
+        run: |
+          echo "HOST_UID=$(id -u)" >> "$GITHUB_ENV"
+          echo "HOST_GID=$(id -g)" >> "$GITHUB_ENV"
+
+      - name: Run limited preprocessing canary
+        run: |
+          ./scripts/run-full-processing.sh --limit 3
+
+      - name: Remove canary environment and data
+        run: |
+          docker compose \
+            -f preprocessing/docker-compose.yaml \
+            down --remove-orphans
+
+          docker image rm "$CHROMADB_FINAL_IMAGE" 2>/dev/null || true
+
+          rm -rf .local
+          mkdir -p .local/raw .local/enriched .local/chroma
+
+      - name: Run full preprocessing
+        run: |
+          ./scripts/run-full-processing.sh  --limit 3  # NOTE! remove after for final setup
+
+      # No tag or push occurs before this point.
+      # Reaching this step means both preprocessing runs succeeded.
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag branch and commit images
+        run: |
+          docker tag \
+            "$PREPROCESSING_IMAGE" \
+            "$PREPROCESSING_REGISTRY_IMAGE:${GITHUB_SHA}"
+
+          docker tag \
+            "$CHROMADB_FINAL_IMAGE" \
+            "$CHROMADB_REGISTRY_IMAGE:${GITHUB_SHA}"
+
+          docker tag \
+            "$PREPROCESSING_IMAGE" \
+            "$PREPROCESSING_REGISTRY_IMAGE:${GITHUB_REF_NAME//\//-}-${GITHUB_SHA:0:7}"
+
+          docker tag \
+            "$CHROMADB_FINAL_IMAGE" \
+            "$CHROMADB_REGISTRY_IMAGE:${GITHUB_REF_NAME//\//-}-${GITHUB_SHA:0:7}"
+
+      - name: Push branch and commit images
+        run: |
+          docker push "$PREPROCESSING_REGISTRY_IMAGE:${GITHUB_SHA}"
+          docker push "$CHROMADB_REGISTRY_IMAGE:${GITHUB_SHA}"
+
+          docker push \
+            "$PREPROCESSING_REGISTRY_IMAGE:${GITHUB_REF_NAME//\//-}-${GITHUB_SHA:0:7}"
+
+          docker push \
+            "$CHROMADB_REGISTRY_IMAGE:${GITHUB_REF_NAME//\//-}-${GITHUB_SHA:0:7}"
+
+      - name: Show Compose logs after failure
+        if: failure()
+        run: |
+          docker compose \
+            -f preprocessing/docker-compose.yaml \
+            logs --no-color || true
+
+      - name: Clean up
+        if: always()
+        run: |
+          docker compose \
+            -f preprocessing/docker-compose.yaml \
+            down -v --remove-orphans || true
+
+          # docker system prune -af --volumes || true
+
+          if [[ "$REUSE_LOCAL_PREPROCESSING" != "true" ]]; then
+            rm -rf .local
+          fi

@@ -1,0 +1,28 @@
+services:
+  traefik:
+    image: traefik:v3
+
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+
+      - --entrypoints.web.address=:80
+
+      - --api.dashboard=true
+      - --api.insecure=true
+
+    ports:
+      - "8080:80"
+      - "8081:8080"
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    restart: unless-stopped
+
+    networks:
+      - preview_proxy
+
+networks:
+  preview_proxy:
+    name: preview_proxy

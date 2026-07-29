@@ -80,8 +80,18 @@ class APIRetriever:
             }
             responses: dict[str, Any] = {"data": []}
 
-            logger.info(f"Fetching from {endpoint}...")
-            
+            url = f"{self.base_url.rstrip('/')}/{endpoint.lstrip('/')}"
+            headers = self._prepare_headers()
+
+            logger.info("Endpoint: %s", endpoint)
+            logger.info("Request URL: %s", url)
+            logger.info("Query params: %s", params)
+            logger.info(
+                "Authorization: Bearer %s...%s",
+                self.token[:6],
+                self.token[-4:],
+            )
+
             response = requests.post(
                 url,
                 headers=headers,
@@ -100,7 +110,14 @@ class APIRetriever:
                 responses["data"].extend(response_json.get("data", []))
             else:
                 logger.error(
-                    f"Failed to fetch {endpoint}. Status code: {response.status_code}"
+                    "Failed to fetch %s\n"
+                    "URL: %s\n"
+                    "Status: %s\n"
+                    "Response:\n%s",
+                    endpoint,
+                    url,
+                    response.status_code,
+                    response.text,
                 )
                 return None
             

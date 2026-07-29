@@ -1,0 +1,78 @@
+name: Continuous Delivery - Development
+
+on:
+  workflow_run:
+    workflows:
+      - Continuous Integration - Application
+    types:
+      - completed
+    branches:
+      - develop
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: deploy-development
+  cancel-in-progress: true
+
+env:
+  CHROMADB_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-chromadb
+  RAG_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-rag
+  ORCHESTRATOR_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-orchestrator
+  GUI_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-gui
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+
+    runs-on: self-hosted
+    timeout-minutes: 30
+
+    env:
+      BUILD_SHA: ${{ github.event.workflow_run.head_sha }}
+
+    steps:
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p ~/.ssh
+
+          echo "${{ secrets.DEV_SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+          ssh-keyscan -H "${{ secrets.DEV_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy development environment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ssh "${{ secrets.DEV_USER }}@${{ secrets.DEV_HOST }}" <<EOF
+          set -euo pipefail
+
+          cd /opt/CISUC_chatbot
+
+          git fetch origin
+          git checkout develop
+          git reset --hard ${BUILD_SHA}
+
+          docker login ghcr.io \
+            -u "${{ github.actor }}" \
+            -p "${{ secrets.GITHUB_TOKEN }}"
+
+          export CHROMADB_FINAL_IMAGE="${CHROMADB_REGISTRY_IMAGE}:${BUILD_SHA}"
+          export RAG_IMAGE="${RAG_REGISTRY_IMAGE}:${BUILD_SHA}"
+          export ORCHESTRATOR_IMAGE="${ORCHESTRATOR_REGISTRY_IMAGE}:${BUILD_SHA}"
+          export GUI_IMAGE="${GUI_REGISTRY_IMAGE}:${BUILD_SHA}"
+
+          chmod +x scripts/*.sh
+
+          ./scripts/run-application.sh up
+
+          docker image prune -f
+
+          EOF

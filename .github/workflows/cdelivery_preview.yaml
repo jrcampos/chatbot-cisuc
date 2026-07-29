@@ -1,4 +1,4 @@
-name: Deploy Preview
+name: Continuous Delivery and Preview
 
 on:
   pull_request:
@@ -79,6 +79,13 @@ jobs:
         run: |
           ./scripts/run-application.sh \
             up \
+            application/docker-compose.preview.yaml
+
+      - name: Roll back failed preview deployment
+        if: ${{ failure() && steps.deploy_preview.outcome == 'failure' }}
+        run: |
+          ./scripts/run-application.sh \
+            down \
             application/docker-compose.preview.yaml
 
   cleanup:

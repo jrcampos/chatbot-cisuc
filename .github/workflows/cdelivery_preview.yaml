@@ -24,7 +24,9 @@ env:
 
 jobs:
   deploy:
-    if: github.event.action != 'closed'
+    if: |
+      github.event.action != 'closed' &&
+      github.event.pull_request.base.ref == 'develop'
 
     runs-on: self-hosted
     timeout-minutes: 20
@@ -80,7 +82,9 @@ jobs:
             application/docker-compose.preview.yaml
 
   cleanup:
-    if: github.event.action == 'closed'
+    if: |
+      github.event.action == 'closed' &&
+      github.event.pull_request.base.ref == 'develop'
 
     runs-on: self-hosted
     timeout-minutes: 10

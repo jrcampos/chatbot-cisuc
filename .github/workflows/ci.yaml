@@ -1,0 +1,25 @@
+name: Continuous Integration
+run-name: "${{ github.workflow }}"
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preprocessing:
+    uses: ./.github/workflows/ci_preprocessing.yaml
+    secrets: inherit
+
+  application:
+    needs: preprocessing
+    uses: ./.github/workflows/ci_application.yaml
+    secrets: inherit

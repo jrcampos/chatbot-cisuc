@@ -2,11 +2,7 @@ name: Continuous Integration - Application
 run-name: "${{ github.workflow }}"
 
 on:
-  workflow_run:
-    workflows:
-      - Continuous Integration - Preprocessing
-    types:
-      - completed
+  workflow_call:
 
 permissions:
   contents: read
@@ -24,8 +20,6 @@ env:
 
 jobs:
   application:
-    if: github.event.workflow_run.conclusion == 'success'
-
     runs-on: self-hosted
     timeout-minutes: 30
 
@@ -37,20 +31,17 @@ jobs:
       - name: Check out commit
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-
-      - name: Debug workflow_run
-        run: |
-          echo "head_sha:     ${{ github.event.workflow_run.head_sha }}"
-          echo "head_branch:  ${{ github.event.workflow_run.head_branch }}"
-          echo "run_id:       ${{ github.event.workflow_run.id }}"
-          echo "event:        ${{ github.event.workflow_run.event }}"
+          ref: ${{ GITHUB_SHA }}
 
       - name: Verify checkout
         run: |
           git rev-parse HEAD
           git log --oneline -1
-          
+
+      - name: Dump event
+        run: |
+          cat "$GITHUB_EVENT_PATH"
+
       - name: Load configuration
         shell: bash
         run: |
@@ -66,7 +57,7 @@ jobs:
             echo "RAG_IMAGE=$RAG_IMAGE"
             echo "ORCHESTRATOR_IMAGE=$ORCHESTRATOR_IMAGE"
             echo "GUI_IMAGE=$GUI_IMAGE"
-            echo "CHROMADB_FINAL_IMAGE=$CHROMADB_REGISTRY_IMAGE:${{ github.event.workflow_run.head_sha }}"
+            echo "CHROMADB_FINAL_IMAGE=$CHROMADB_REGISTRY_IMAGE:${{ GITHUB_SHA }}"
           } >> "$GITHUB_ENV"
 
       - name: Make scripts executable
@@ -88,7 +79,7 @@ jobs:
       - name: Tag application images
         shell: bash
         env:
-          BUILD_SHA: ${{ github.event.workflow_run.head_sha }}
+          BUILD_SHA: ${{ GITHUB_SHA }}
         run: |
           set -euo pipefail
 
@@ -107,7 +98,7 @@ jobs:
       - name: Push application images
         shell: bash
         env:
-          BUILD_SHA: ${{ github.event.workflow_run.head_sha }}
+          BUILD_SHA: ${{ GITHUB_SHA }}
         run: |
           set -euo pipefail
 

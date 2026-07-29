@@ -1,0 +1,36 @@
+name: Continuous Delivery - Preview Cleanup
+run-name: "${{ github.workflow }}"
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  cleanup:
+    runs-on: self-hosted
+    timeout-minutes: 10
+
+    env:
+      PREVIEW_ID: ${{ github.event.pull_request.number }}
+      COMPOSE_PROJECT_NAME: pr${{ github.event.pull_request.number }}
+
+    steps:
+      - name: Check out default branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh
+
+      - name: Remove preview
+        run: |
+          ./scripts/run-application.sh \
+            down \
+            application/docker-compose.preview.yaml

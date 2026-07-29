@@ -3,6 +3,14 @@ run-name: "${{ github.workflow }}"
 
 on:
   push:
+  pull_request:
+    branches:
+      - develop
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - closed
   workflow_dispatch:
 
 permissions:
@@ -10,15 +18,38 @@ permissions:
   packages: write
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   preprocessing:
+    if: |
+      github.event_name != 'pull_request' ||
+      github.event.action != 'closed'
     uses: ./.github/workflows/ci_preprocessing.yaml
     secrets: inherit
 
   application:
+    if: |
+      github.event_name != 'pull_request' ||
+      github.event.action != 'closed'
     needs: preprocessing
     uses: ./.github/workflows/ci_application.yaml
+    secrets: inherit
+
+  preview:
+    if: |
+      github.event_name == 'pull_request' &&
+      github.event.action != 'closed' &&
+      github.event.pull_request.base.ref == 'develop'
+    needs: application
+    uses: ./.github/workflows/cdelivery_preview.yaml
+    secrets: inherit
+
+  cleanup:
+    if: |
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.base.ref == 'develop'
+    uses: ./.github/workflows/cdelivery_preview_cleanup.yaml
     secrets: inherit

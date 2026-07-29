@@ -139,7 +139,7 @@ jobs:
 
           echo "Deploying development commit: $BUILD_SHA"
 
-          ./scripts/run-application.sh up
+          ./scripts/run-application.sh up application/docker-compose.deployment.yaml
 
           docker image prune -f
           REMOTE_SCRIPT

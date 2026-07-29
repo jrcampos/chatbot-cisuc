@@ -8,10 +8,6 @@ permissions:
   contents: read
   packages: write
 
-concurrency:
-  group: application-ci-${{ github.event.workflow_run.head_branch }}
-  cancel-in-progress: true
-
 env:
   CHROMADB_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-chromadb
   RAG_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-rag

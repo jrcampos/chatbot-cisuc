@@ -31,7 +31,7 @@ jobs:
       - name: Check out commit
         uses: actions/checkout@v6
         with:
-          ref: ${{ GITHUB_SHA }}
+          ref: ${{ github.sha }}
 
       - name: Verify checkout
         run: |
@@ -57,7 +57,7 @@ jobs:
             echo "RAG_IMAGE=$RAG_IMAGE"
             echo "ORCHESTRATOR_IMAGE=$ORCHESTRATOR_IMAGE"
             echo "GUI_IMAGE=$GUI_IMAGE"
-            echo "CHROMADB_FINAL_IMAGE=$CHROMADB_REGISTRY_IMAGE:${{ GITHUB_SHA }}"
+            echo "CHROMADB_FINAL_IMAGE=$CHROMADB_REGISTRY_IMAGE:${{ github.sha }}"
           } >> "$GITHUB_ENV"
 
       - name: Make scripts executable
@@ -79,7 +79,7 @@ jobs:
       - name: Tag application images
         shell: bash
         env:
-          BUILD_SHA: ${{ GITHUB_SHA }}
+          BUILD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
 
@@ -98,7 +98,7 @@ jobs:
       - name: Push application images
         shell: bash
         env:
-          BUILD_SHA: ${{ GITHUB_SHA }}
+          BUILD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
 

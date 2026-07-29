@@ -1,4 +1,5 @@
 name: Deploy Proxy
+run-name: "${{ github.workflow }}"
 
 on:
   push:

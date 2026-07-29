@@ -1,9 +1,8 @@
 name: Continuous Integration - Preprocessing
+run-name: "${{ github.workflow }}"
 
 on:
-  push:
-
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -23,6 +22,7 @@ jobs:
 
     runs-on: self-hosted
     timeout-minutes: 120
+
     env:
       CISUC_TOKEN: ${{ secrets.CISUC_TOKEN }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -47,6 +47,7 @@ jobs:
           {
             echo "PREPROCESSING_IMAGE=$PREPROCESSING_IMAGE"
             echo "CHROMADB_FINAL_IMAGE=$CHROMADB_FINAL_IMAGE"
+            echo "REUSE_LOCAL_PREPROCESSING=$REUSE_LOCAL_PREPROCESSING"
           } >> "$GITHUB_ENV"
 
       - name: Make scripts executable
@@ -137,4 +138,6 @@ jobs:
 
           # docker system prune -af --volumes || true
 
-          rm -rf .local
+          if [[ "$REUSE_LOCAL_PREPROCESSING" != "true" ]]; then
+            rm -rf .local
+          fi

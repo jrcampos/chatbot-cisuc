@@ -1,4 +1,5 @@
 name: Continuous Delivery and Preview
+run-name: "${{ github.workflow }}"
 
 on:
   pull_request:
@@ -35,7 +36,7 @@ jobs:
       BUILD_SHA: ${{ github.event.pull_request.head.sha }}
       PREVIEW_ID: ${{ github.event.pull_request.number }}
       COMPOSE_PROJECT_NAME: pr${{ github.event.pull_request.number }}
-      VITE_ORCHESTRATOR_API_ENDPOINT: /preview/${{ github.event.pull_request.number }}/chat
+      # VITE_ORCHESTRATOR_API_ENDPOINT: /preview/${{ github.event.pull_request.number }}/chat
 
     steps:
       - name: Check out repository

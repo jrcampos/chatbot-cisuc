@@ -1,4 +1,5 @@
 name: Continuous Delivery - Development
+run-name: "${{ github.workflow }}"
 
 
 on:

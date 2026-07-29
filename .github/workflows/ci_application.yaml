@@ -1,4 +1,5 @@
 name: Continuous Integration - Application
+run-name: "${{ github.workflow }}"
 
 on:
   workflow_run:
@@ -38,6 +39,18 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
+      - name: Debug workflow_run
+        run: |
+          echo "head_sha:     ${{ github.event.workflow_run.head_sha }}"
+          echo "head_branch:  ${{ github.event.workflow_run.head_branch }}"
+          echo "run_id:       ${{ github.event.workflow_run.id }}"
+          echo "event:        ${{ github.event.workflow_run.event }}"
+
+      - name: Verify checkout
+        run: |
+          git rev-parse HEAD
+          git log --oneline -1
+          
       - name: Load configuration
         shell: bash
         run: |

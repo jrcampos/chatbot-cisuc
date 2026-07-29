@@ -1,0 +1,26 @@
+services:
+  gui:
+    ports: !reset []
+    networks:
+      - chatbot_net
+
+  orchestrator:
+    ports: !reset []
+    networks:
+      - chatbot_net
+
+  development_proxy:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./development-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - gui
+      - orchestrator
+    networks:
+      - chatbot_net
+    restart: unless-stopped
+
+networks:
+  chatbot_net:

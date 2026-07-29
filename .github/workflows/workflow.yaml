@@ -1,4 +1,4 @@
-name: Continuous Integration
+name: Chatbot CI/CD workflow
 run-name: "${{ github.workflow }}"
 
 on:

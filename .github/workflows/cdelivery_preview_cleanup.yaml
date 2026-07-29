@@ -20,6 +20,8 @@ jobs:
       PREVIEW_ID: ${{ github.event.pull_request.number }}
       COMPOSE_PROJECT_NAME: pr${{ github.event.pull_request.number }}
 
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OLLAMA_URL: ${{ secrets.OLLAMA_URL }}
     steps:
       - name: Check out default branch
         uses: actions/checkout@v6

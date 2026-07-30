@@ -87,8 +87,12 @@ class APIDataSource:
             user: dict[str, Any],
             target_categories: set[str],
     ) -> bool:
-        category = user.get("category")
-        return category in target_categories
+        category = user.get("category", "")
+
+        return any(
+            category.startswith(target)
+            for target in target_categories
+        )
 
     def _filter_users(
             self,

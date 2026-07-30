@@ -1263,6 +1263,8 @@ Official application builds therefore remain independent of developer-specific c
 
 Developers should avoid relying on `.local` configuration when implementing functionality intended for deployment.
 
+The `REUSE_LOCAL_PREPROCESSING` environment variable is an example of configuration intended exclusively for local development. When enabled, the application reuses preprocessing artifacts generated locally instead of obtaining the corresponding resources from the container registry. This reduces iteration time during development by avoiding unnecessary downloads or rebuilds. The variable is not enabled in CI/CD pipelines or deployment environments, ensuring that preview, staging, and production deployments always use reproducible preprocessing artifacts built through the official automation pipeline.
+
 ---
 
 ## 6.8 Testing

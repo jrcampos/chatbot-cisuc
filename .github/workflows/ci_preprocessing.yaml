@@ -75,7 +75,7 @@ jobs:
 
       - name: Run full preprocessing
         run: |
-          ./scripts/run-full-processing.sh  --limit 3  # NOTE! remove after for final setup
+          ./scripts/run-full-processing.sh
 
       # No tag or push occurs before this point.
       # Reaching this step means both preprocessing runs succeeded.

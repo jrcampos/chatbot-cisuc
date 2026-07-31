@@ -29,10 +29,17 @@ jobs:
           fetch-depth: 0
 
       - name: Install DVC
+        shell: bash
         run: |
-          python3 -m pip install dvc
+          python3 -m pip install --user dvc
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Configure DVC remote
+      - name: Verify DVC
+        run: |
+          which dvc
+          dvc --version
+
+      - name: Configure DVC remoted
         run: |
           dvc remote add --local --force -d preprocessing-cache \
             /home/dev/dvc-storage/cisuc-chatbot

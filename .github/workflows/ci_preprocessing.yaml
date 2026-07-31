@@ -43,7 +43,18 @@ jobs:
             echo "CHROMADB_FINAL_IMAGE=$CHROMADB_FINAL_IMAGE"
             echo "REUSE_LOCAL_PREPROCESSING=$REUSE_LOCAL_PREPROCESSING"
           } >> "$GITHUB_ENV"
+      - name: Debug configuration
+        run: |
+          echo "REUSE_LOCAL_PREPROCESSING=$REUSE_LOCAL_PREPROCESSING"
+          echo "Workspace: $PWD"
 
+          if [[ -d .local ]]; then
+            echo ".local exists"
+            ls -la .local
+          else
+            echo ".local does not exist"
+          fi
+          
       - name: Make scripts executable
         run: chmod +x scripts/*.sh
 
@@ -132,8 +143,12 @@ jobs:
             -f preprocessing/docker-compose.yaml \
             down -v --remove-orphans || true
 
-          # docker system prune -af --volumes || true
-
           if [[ "$REUSE_LOCAL_PREPROCESSING" != "true" ]]; then
+            echo "REUSE_LOCAL_PREPROCESSING=$REUSE_LOCAL_PREPROCESSING"
+            echo "Removing .local..."
             rm -rf .local
+            echo "Cleanup complete."
+          else
+            echo "REUSE_LOCAL_PREPROCESSING=$REUSE_LOCAL_PREPROCESSING"
+            echo "Keeping .local for reuse."
           fi

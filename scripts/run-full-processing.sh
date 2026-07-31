@@ -21,18 +21,6 @@ for arg in "$@"; do
     esac
 done
 
-LIMITED_RUN=false
-
-for arg in "$@"; do
-    case "$arg" in
-        --limit)
-            LIMITED_RUN=true
-            ;;
-        --limit=*)
-            LIMITED_RUN=true
-            ;;
-    esac
-done
 
 ./scripts/build-preprocessing.sh
 
@@ -54,5 +42,6 @@ fi
 ./scripts/finish-preprocessing.sh
 
 if [[ "$LIMITED_RUN" == "false" ]]; then
+    echo "Creating .preprocessing-complete"
     touch ".local/.preprocessing-complete"
 fi

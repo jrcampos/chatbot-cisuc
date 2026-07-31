@@ -43,6 +43,7 @@ jobs:
             echo "CHROMADB_FINAL_IMAGE=$CHROMADB_FINAL_IMAGE"
             echo "REUSE_LOCAL_PREPROCESSING=$REUSE_LOCAL_PREPROCESSING"
           } >> "$GITHUB_ENV"
+          
       - name: Debug configuration
         run: |
           echo "REUSE_LOCAL_PREPROCESSING=$REUSE_LOCAL_PREPROCESSING"
@@ -54,7 +55,7 @@ jobs:
           else
             echo ".local does not exist"
           fi
-          
+
       - name: Make scripts executable
         run: chmod +x scripts/*.sh
 

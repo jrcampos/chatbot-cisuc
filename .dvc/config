@@ -1,0 +1,4 @@
+[core]
+    remote = preprocessing-cache
+['remote "preprocessing-cache"']
+    url = /home/dev/dvc-storage/cisuc-chatbot

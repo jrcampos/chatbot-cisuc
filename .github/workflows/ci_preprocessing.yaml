@@ -43,7 +43,7 @@ jobs:
             echo "CHROMADB_FINAL_IMAGE=$CHROMADB_FINAL_IMAGE"
             echo "REUSE_LOCAL_PREPROCESSING=$REUSE_LOCAL_PREPROCESSING"
           } >> "$GITHUB_ENV"
-          
+
       - name: Debug configuration
         run: |
           echo "REUSE_LOCAL_PREPROCESSING=$REUSE_LOCAL_PREPROCESSING"
@@ -65,6 +65,7 @@ jobs:
             .local/raw \
             .local/enriched \
             .local/chroma
+
       - name: Configure runner identity
         run: |
           echo "HOST_UID=$(id -u)" >> "$GITHUB_ENV"
@@ -152,4 +153,12 @@ jobs:
           else
             echo "REUSE_LOCAL_PREPROCESSING=$REUSE_LOCAL_PREPROCESSING"
             echo "Keeping .local for reuse."
+          
+            
+            if [[ -d .local ]]; then
+              echo ".local exists"
+              ls -la .local
+            else
+              echo "But .local does not exist!!!"
+            fi
           fi

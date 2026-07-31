@@ -149,10 +149,10 @@ jobs:
             docker push "${image}:${tag}"
           }
 
-          promote "$CHROMADB_REGISTRY_IMAGE" "develop"
-          promote "$RAG_REGISTRY_IMAGE" "develop"
-          promote "$ORCHESTRATOR_REGISTRY_IMAGE" "develop"
-          promote "$GUI_REGISTRY_IMAGE" "develop"
+          promote "$CHROMADB_REGISTRY_IMAGE" "staging"
+          promote "$RAG_REGISTRY_IMAGE" "staging"
+          promote "$ORCHESTRATOR_REGISTRY_IMAGE" "staging"
+          promote "$GUI_REGISTRY_IMAGE" "staging"
 
           docker image prune -f
           REMOTE_SCRIPT

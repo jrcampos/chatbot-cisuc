@@ -139,7 +139,7 @@ jobs:
 
           echo "Deploying production commit: $BUILD_SHA"
 
-          ./scripts/run-application.sh up application/docker-compose.deployment.yaml
+          ./scripts/run-application.sh up application/docker-compose.nginx.yaml
 
           promote() {
             local image="$1"

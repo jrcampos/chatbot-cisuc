@@ -11,7 +11,7 @@ services:
       - traefik.enable=true
       - traefik.docker.network=preview_proxy
 
-      - traefik.http.routers.gui-${PREVIEW_ID}.rule=PathPrefix(`/preview/${PREVIEW_ID}/`)
+      - traefik.http.routers.gui-${PREVIEW_ID:?PREVIEW_ID must be defined}.rule=PathPrefix(`/preview/${PREVIEW_ID}/`)
       - traefik.http.routers.gui-${PREVIEW_ID}.entrypoints=web
       - traefik.http.routers.gui-${PREVIEW_ID}.middlewares=gui-strip-${PREVIEW_ID}
       - traefik.http.routers.gui-${PREVIEW_ID}.service=gui-${PREVIEW_ID}

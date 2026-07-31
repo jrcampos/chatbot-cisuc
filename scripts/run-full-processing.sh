@@ -21,6 +21,19 @@ for arg in "$@"; do
     esac
 done
 
+LIMITED_RUN=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --limit)
+            LIMITED_RUN=true
+            ;;
+        --limit=*)
+            LIMITED_RUN=true
+            ;;
+    esac
+done
+
 ./scripts/build-preprocessing.sh
 
 if [[ "$REUSE_LOCAL_PREPROCESSING" == "true" &&

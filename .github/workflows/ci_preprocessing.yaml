@@ -38,7 +38,7 @@ jobs:
           fi
 
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          
+
       - name: Verify DVC
         run: |
           which dvc
@@ -81,6 +81,30 @@ jobs:
       - name: Build preprocessing image
         run: |
           ./scripts/build-preprocessing.sh
+
+      - name: Wait for ChromaDB
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for i in {1..30}; do
+            if docker compose \
+              -f preprocessing/docker-compose.yaml \
+              exec -T chromadb \
+              sh -c 'wget -qO- http://localhost:8000/api/v2/heartbeat >/dev/null 2>&1'; then
+              echo "ChromaDB is ready."
+              exit 0
+            fi
+
+            echo "Waiting for ChromaDB..."
+            sleep 2
+          done
+
+          echo "ChromaDB did not become ready."
+          docker compose \
+            -f preprocessing/docker-compose.yaml \
+            logs --no-color chromadb || true
+          exit 1
 
       - name: Check preprocessing status
         id: dvc-status

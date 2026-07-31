@@ -1,15 +1,15 @@
 stages:
   preprocessing:
-    cmd: ./scripts/run-full-processing.sh
+    cmd: ./scripts/run-preprocessing-data.sh
     deps:
       - preprocessing
-      - scripts/build-preprocessing.sh
-      - scripts/run-full-processing.sh
+      - scripts/run-preprocessing-data.sh
       - scripts/run-ingestion.sh
       - scripts/run-enhancement.sh
       - scripts/run-embeddings.sh
-      - scripts/finish-preprocessing.sh
       - config/chatbot-common.env
       - config/preprocessing.env
     outs:
-      - .local
+      - .local/raw
+      - .local/enriched
+      - .local/chroma

@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 concurrency:
@@ -31,7 +31,8 @@ jobs:
       !(
         github.event_name == 'push' &&
         github.ref == 'refs/heads/main'
-      )
+      ) &&
+      !contains(github.event.head_commit.message, 'chore: update preprocessing DVC lock')
     uses: ./.github/workflows/ci_preprocessing.yaml
     secrets: inherit
 
@@ -44,7 +45,8 @@ jobs:
       !(
         github.event_name == 'push' &&
         github.ref == 'refs/heads/main'
-      )
+      ) &&
+      !contains(github.event.head_commit.message, 'chore: update preprocessing DVC lock')
     needs: preprocessing
     uses: ./.github/workflows/ci_application.yaml
     secrets: inherit

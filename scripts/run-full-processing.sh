@@ -7,7 +7,19 @@ source config/preprocessing.env
 set +a
 
 REUSE_LOCAL_PREPROCESSING="${REUSE_LOCAL_PREPROCESSING:-false}"
-LOCAL_DIR="${LOCAL_DIR:-.local}"
+
+LIMITED_RUN=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --limit)
+            LIMITED_RUN=true
+            ;;
+        --limit=*)
+            LIMITED_RUN=true
+            ;;
+    esac
+done
 
 LIMITED_RUN=false
 
@@ -25,8 +37,8 @@ done
 ./scripts/build-preprocessing.sh
 
 if [[ "$REUSE_LOCAL_PREPROCESSING" == "true" &&
-      -f "$LOCAL_DIR/.preprocessing-complete" ]]; then
-    echo "Reusing preprocessing data from $LOCAL_DIR"
+      -f ".local/.preprocessing-complete" ]]; then
+    echo "Reusing preprocessing data from .local"
     echo "Skipping ingestion, enrichment, and embeddings."
 else
     echo "Running ingestion..."
@@ -42,5 +54,5 @@ fi
 ./scripts/finish-preprocessing.sh
 
 if [[ "$LIMITED_RUN" == "false" ]]; then
-    touch "$LOCAL_DIR/.preprocessing-complete"
+    touch ".local/.preprocessing-complete"
 fi

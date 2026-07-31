@@ -1,0 +1,188 @@
+
+
+CISUC Chatbot — Developer Crash Course
+
+This guide walks you through the typical development workflow, from creating a feature branch to testing your changes locally and opening a Pull Request.
+
+⸻
+
+1. Create a feature branch
+
+Always start from the latest develop branch.
+
+git switch develop
+git pull origin develop
+git switch -c feature/my-feature
+
+Work normally, committing your changes as you go.
+
+git add .
+git commit -m "feat: implement my new feature"
+git push -u origin feature/my-feature
+
+⸻
+
+2. Run the preprocessing pipeline locally
+
+The preprocessing pipeline builds the knowledge base used by the chatbot.
+
+Step 1 — Build preprocessing containers
+
+./scripts/build-preprocessing.sh
+
+⸻
+
+Step 2 — Run data ingestion
+
+Run every ingestion source
+
+./scripts/run-ingestion.sh
+
+Or run individual sources
+
+./scripts/run-ingestion.sh --source api
+./scripts/run-ingestion.sh --source static
+./scripts/run-ingestion.sh --source news
+
+⸻
+
+Step 3 — Run enrichment
+
+For quick testing (recommended while developing):
+
+./scripts/run-enhancement.sh --limit 3
+
+To enrich the complete dataset:
+
+./scripts/run-enhancement.sh
+
+Note
+
+Running the full enhancement pipeline sends requests to the OpenAI API.
+
+⸻
+
+Step 4 — Generate embeddings
+
+./scripts/run-embeddings.sh
+
+⸻
+
+Step 5 — Finish preprocessing
+
+./scripts/finish-preprocessing.sh
+
+At this point, the preprocessing artifacts are ready.
+
+⸻
+
+3. Run the chatbot locally
+
+Build and start the application.
+
+./scripts/run-application.sh up-build application/docker-compose.nginx.yaml
+
+The chatbot will be available at
+
+http://localhost
+
+Note
+
+Some containers may require several seconds before becoming healthy. If the UI loads before the backend is ready, simply wait a few moments and refresh the page.
+
+⸻
+
+4. Keep your feature branch up to date
+
+If your feature branch lives for several days, regularly update it with the latest changes from develop.
+
+git switch feature/my-feature
+git fetch origin
+git merge origin/develop
+
+Doing this before requesting a review helps:
+
+* reduce merge conflicts;
+* ensure the preview matches the latest develop;
+* avoid surprises during the final merge.
+
+⸻
+
+5. Open a Pull Request
+
+When your feature is ready for review, open a Pull Request:
+
+feature/my-feature → develop
+
+The CI/CD pipeline will automatically:
+
+* build the application;
+* execute the tests;
+* deploy a preview environment.
+
+The preview is built from GitHub’s temporary merge of your feature branch with the current develop branch (provided the branches can be merged automatically). This lets reviewers test the application as it would behave after being merged into develop.
+
+⸻
+
+6. Available environments
+
+Local development
+
+http://localhost
+
+⸻
+
+Preview (one per Pull Request)
+
+http://10.3.1.8:8080/preview/<PR_NUMBER>/
+
+Example:
+
+http://10.3.1.8:8080/preview/21/
+
+⸻
+
+Development / Staging
+
+http://10.3.1.8
+
+⸻
+
+Production
+
+http://10.3.2.139
+
+⸻
+
+Typical workflow
+
+Update develop
+        │
+        ▼
+Create feature branch
+        │
+        ▼
+Develop locally
+        │
+        ▼
+Run preprocessing
+        │
+        ▼
+Run chatbot locally
+        │
+        ▼
+Commit & push
+        │
+        ▼
+Keep feature branch updated with develop
+        │
+        ▼
+Open Pull Request
+        │
+        ▼
+Preview environment is deployed
+        │
+        ▼
+Review → Merge into develop
+
+This version explains not only what to do, but also why each step exists, making it more useful for someone joining the project for the first time.

@@ -31,15 +31,20 @@ jobs:
       - name: Install DVC
         shell: bash
         run: |
-          python3 -m pip install --user dvc
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
 
+          if ! command -v dvc >/dev/null 2>&1; then
+            python3 -m pip install --user dvc
+          fi
+
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          
       - name: Verify DVC
         run: |
           which dvc
           dvc --version
 
-      - name: Configure DVC remoted
+      - name: Configure DVC remote
         run: |
           dvc remote add --local --force -d preprocessing-cache \
             /home/dev/dvc-storage/cisuc-chatbot
@@ -77,9 +82,32 @@ jobs:
         run: |
           ./scripts/build-preprocessing.sh
 
+      - name: Check preprocessing status
+        id: dvc-status
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          status_output="$(dvc status preprocessing)"
+          printf '%s\n' "$status_output"
+
+          if [[ "$status_output" == "Data and pipelines are up to date." ]]; then
+            echo "reused=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "reused=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Reproduce preprocessing data
         run: |
           dvc repro preprocessing
+
+      - name: Report preprocessing result
+        run: |
+          if [[ "${{ steps.dvc-status.outputs.reused }}" == "true" ]]; then
+            echo "✅ Reused cached preprocessing output."
+          else
+            echo "🔄 Regenerated preprocessing output."
+          fi
 
       - name: Store preprocessing data
         run: |

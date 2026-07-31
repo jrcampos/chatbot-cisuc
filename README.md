@@ -1,7 +1,4 @@
 # CISUC Chatbot
-## Technical Documentation
-
-> Version 1.0
 
 ---
 
@@ -34,7 +31,22 @@ This document provides a comprehensive technical description of the platform, in
 
 ---
 
-## 1.2 Scope
+## 1.2 Development Team
+
+The CISUC Chatbot is developed within the Centre for Informatics and Systems of the University of Coimbra (CISUC).
+
+### Project Coordination
+
+- João R. Campos <jrcampos@dei.uc.pt>
+- Nuno Lourenço
+
+### Developers
+
+- Arthur Sophiatti
+
+---
+
+## 1.3 Scope
 
 This document is intended for developers, researchers, maintainers, and system administrators involved in the development or operation of the CISUC Chatbot.
 
@@ -55,7 +67,7 @@ User documentation and operational procedures outside the software platform are 
 
 ---
 
-## 1.3 System Overview
+## 1.4 System Overview
 
 The CISUC Chatbot consists of two major subsystems:
 

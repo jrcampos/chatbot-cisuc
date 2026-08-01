@@ -7,4 +7,5 @@ source config/preprocessing.env
 set +a
 
 ./scripts/run-ingestion.sh
+
 ./scripts/run-enhancement.sh

@@ -123,6 +123,7 @@ jobs:
           fi
 
       - name: Store preprocessing data
+        if: github.event_name == 'push'
         run: |
           dvc push
 

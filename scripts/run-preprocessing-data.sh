@@ -7,7 +7,6 @@ source config/preprocessing.env
 set +a
 
 ./scripts/run-ingestion.sh
-./scripts/run-enhancement.sh --limit 3
 
 
 echo "===== Host .local ====="
@@ -35,5 +34,8 @@ docker compose \
     echo "--- sqlite ---"
     ls -lah /data/*.sqlite* 2>/dev/null || true
 '
+
+
+./scripts/run-enhancement.sh --limit 3
 
 ./scripts/run-embeddings.sh

@@ -101,6 +101,28 @@ jobs:
         run: |
           ./scripts/build-preprocessing.sh
 
+      - name: Diagnose Chroma mount
+        shell: bash
+        run: |
+          docker compose \
+            -f preprocessing/docker-compose.yaml \
+            exec -T chromadb sh -c '
+              echo "=== mount ==="
+              mount | grep " /data " || true
+
+              echo "=== df ==="
+              df -h /data || true
+
+              echo "=== stat ==="
+              stat /data || true
+
+              echo "=== ls ==="
+              ls -la /data || true
+
+              echo "=== touch ==="
+              touch /data/test && echo OK || echo FAIL
+            '
+
       - name: Check workspace after Docker
         run: |
           find .local -maxdepth 2 -printf "%P\n"
@@ -191,6 +213,22 @@ jobs:
         run: |
           ls -l .local/chroma
           stat .local/chroma/chroma.sqlite3
+
+      - name: Diagnose before repro
+        run: |
+          echo "Host:"
+          stat .local/chroma
+          ls -la .local/chroma
+
+          docker compose \
+            -f preprocessing/docker-compose.yaml \
+            exec -T chromadb \
+            stat /data
+
+          docker compose \
+            -f preprocessing/docker-compose.yaml \
+            exec -T chromadb \
+            ls -la /data
 
       - name: Reproduce preprocessing data
         run: |

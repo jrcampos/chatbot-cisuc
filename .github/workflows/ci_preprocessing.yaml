@@ -5,7 +5,7 @@ on:
   workflow_call:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 env:
@@ -28,6 +28,33 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install DVC
+        shell: bash
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+
+          if ! command -v dvc >/dev/null 2>&1; then
+            python3 -m pip install --user dvc
+          fi
+
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Verify DVC
+        run: |
+          which dvc
+          dvc --version
+
+      - name: Configure DVC remote
+        run: |
+          dvc remote add --local --force -d preprocessing-cache \
+            /home/dev/dvc-storage/cisuc-chatbot
+
+      - name: Restore preprocessing data
+        run: |
+          if ! dvc pull; then
+            echo "No reusable DVC output found; preprocessing will run."
+          fi
+
       - name: Load configuration
         shell: bash
         run: |
@@ -41,46 +68,95 @@ jobs:
           {
             echo "PREPROCESSING_IMAGE=$PREPROCESSING_IMAGE"
             echo "CHROMADB_FINAL_IMAGE=$CHROMADB_FINAL_IMAGE"
-            echo "REUSE_LOCAL_PREPROCESSING=$REUSE_LOCAL_PREPROCESSING"
           } >> "$GITHUB_ENV"
 
       - name: Make scripts executable
         run: chmod +x scripts/*.sh
 
-      - name: Create local workspace
-        run: |
-          mkdir -p \
-            .local/raw \
-            .local/enriched \
-            .local/chroma
       - name: Configure runner identity
         run: |
           echo "HOST_UID=$(id -u)" >> "$GITHUB_ENV"
           echo "HOST_GID=$(id -g)" >> "$GITHUB_ENV"
 
-      - name: Run limited preprocessing canary
-        if: env.REUSE_LOCAL_PREPROCESSING != 'true'
+      - name: Prepare preprocessing workspace
+        shell: bash
         run: |
-          ./scripts/run-full-processing.sh --limit 3
+          mkdir -p \
+            .local/raw \
+            .local/enriched
+          
+          dvc unprotect \
+            .local/raw \
+            .local/enriched
 
-      - name: Remove canary environment and data
-        if: env.REUSE_LOCAL_PREPROCESSING != 'true'
+          chmod -R u+rwX,g+rwX .local
+
+      - name: Build preprocessing image
         run: |
-          docker compose \
-            -f preprocessing/docker-compose.yaml \
-            down --remove-orphans
+          ./scripts/build-preprocessing.sh
 
-          docker image rm "$CHROMADB_FINAL_IMAGE" 2>/dev/null || true
-
-          rm -rf .local
-          mkdir -p .local/raw .local/enriched .local/chroma
-
-      - name: Run full preprocessing
+      - name: Check preprocessing status
+        id: dvc-status
+        shell: bash
         run: |
-          ./scripts/run-full-processing.sh
+          set -euo pipefail
+
+          status_output="$(dvc status preprocessing)"
+          printf '%s\n' "$status_output"
+
+          if [[ "$status_output" == "Data and pipelines are up to date." ]]; then
+            echo "reused=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "reused=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Reproduce preprocessing data
+        run: |
+          dvc repro preprocessing
+
+      - name: Report preprocessing result
+        run: |
+          if [[ "${{ steps.dvc-status.outputs.reused }}" == "true" ]]; then
+            echo "✅ Reused cached preprocessing output."
+          else
+            echo "🔄 Regenerated preprocessing output."
+          fi
+
+      - name: Store preprocessing data
+        run: |
+          dvc push
+
+      - name: Populate Chroma database
+        run: |
+          ./scripts/run-embeddings.sh
+
+      - name: Finalize preprocessing image
+        run: |
+          ./scripts/finish-preprocessing.sh
+
+      - name: Commit updated DVC lock
+        if: |
+          github.event_name == 'push' &&
+          github.ref != 'refs/heads/develop' &&
+          github.ref != 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- dvc.lock; then
+            echo "dvc.lock did not change."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add dvc.lock
+          git commit -m "chore: update preprocessing DVC lock"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
 
       # No tag or push occurs before this point.
-      # Reaching this step means both preprocessing runs succeeded.
+      # Reaching this step means preprocessing succeeded or valid DVC output was reused.
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
@@ -125,6 +201,29 @@ jobs:
             -f preprocessing/docker-compose.yaml \
             logs --no-color || true
 
+      - name: Inspect Chroma DB after failure
+        if: failure()
+        shell: bash
+        run: |
+          container_id="$(
+            docker compose \
+              -f preprocessing/docker-compose.yaml \
+              ps -q chromadb 2>/dev/null || true
+          )"
+
+          if [[ -n "$container_id" ]]; then
+            docker exec "$container_id" sh -c '
+              echo "Chroma database directory:"
+              ls -la /chroma-image-data || true
+
+              echo "Chroma database files:"
+              find /chroma-image-data \
+                -maxdepth 4 \
+                -type f \
+                -print || true
+            ' || true
+          fi
+
       - name: Clean up
         if: always()
         run: |
@@ -132,8 +231,4 @@ jobs:
             -f preprocessing/docker-compose.yaml \
             down -v --remove-orphans || true
 
-          # docker system prune -af --volumes || true
-
-          if [[ "$REUSE_LOCAL_PREPROCESSING" != "true" ]]; then
-            rm -rf .local
-          fi
+          rm -rf .local

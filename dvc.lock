@@ -1,0 +1,44 @@
+schema: '2.0'
+stages:
+  preprocessing:
+    cmd: ./scripts/run-preprocessing-data.sh
+    deps:
+    - path: config/chatbot-common.env
+      hash: md5
+      md5: fa4cc5ab8f5753757c8f03a2a60660d3
+      size: 199
+    - path: config/preprocessing.env
+      hash: md5
+      md5: 527cdb964f294617b5c8a0e94154bed3
+      size: 152
+    - path: preprocessing
+      hash: md5
+      md5: 2bd256e68192a0446bb6d848539d5e3d.dir
+      size: 224365
+      nfiles: 36
+    - path: scripts/run-enhancement.sh
+      hash: md5
+      md5: 3c6120f8528b1c5031bab459a04fcaec
+      size: 540
+      isexec: true
+    - path: scripts/run-ingestion.sh
+      hash: md5
+      md5: 6af8375580e5fc79ce500572cfd26375
+      size: 641
+      isexec: true
+    - path: scripts/run-preprocessing-data.sh
+      hash: md5
+      md5: 5b1e9a5b2e4d1510271dd91317476edb
+      size: 174
+      isexec: true
+    outs:
+    - path: .local/enriched
+      hash: md5
+      md5: 1f45cf3eeac74d41fa7e0f82a988fc0c.dir
+      size: 5661883
+      nfiles: 9
+    - path: .local/raw
+      hash: md5
+      md5: 184cc7df611e549e75e21d0a8ae521ca.dir
+      size: 70735250
+      nfiles: 81

@@ -19,17 +19,10 @@ services:
 
   chromadb:
     image: chromadb/chroma:1.5.9
-    user: "${HOST_UID}:${HOST_GID}"
-    volumes:
-      - ../.local/chroma:/data
+    environment:
+      CHROMA_PERSIST_PATH: /chroma-image-data
     networks:
       - preprocessing
-
-  chromadb-final:
-    image: ${CHROMADB_FINAL_IMAGE}
-    build:
-      context: ..
-      dockerfile: preprocessing/Dockerfile.chromadb
 
 networks:
   preprocessing:

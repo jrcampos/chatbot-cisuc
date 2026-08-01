@@ -1,0 +1,13 @@
+stages:
+  preprocessing:
+    cmd: ./scripts/run-preprocessing-data.sh
+    deps:
+      - preprocessing
+      - scripts/run-preprocessing-data.sh
+      - scripts/run-ingestion.sh
+      - scripts/run-enhancement.sh
+      - config/chatbot-common.env
+      - config/preprocessing.env
+    outs:
+      - .local/raw
+      - .local/enriched

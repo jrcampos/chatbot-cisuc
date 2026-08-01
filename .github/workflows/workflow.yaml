@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 concurrency:
@@ -24,15 +24,29 @@ concurrency:
 jobs:
   preprocessing:
     if: |
-      github.event_name != 'pull_request' ||
-      github.event.action != 'closed'
+      (
+        github.event_name != 'pull_request' ||
+        github.event.action != 'closed'
+      ) &&
+      !(
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main'
+      ) &&
+      !contains(github.event.head_commit.message, 'chore: update preprocessing DVC lock')
     uses: ./.github/workflows/ci_preprocessing.yaml
     secrets: inherit
 
   application:
     if: |
-      github.event_name != 'pull_request' ||
-      github.event.action != 'closed'
+      (
+        github.event_name != 'pull_request' ||
+        github.event.action != 'closed'
+      ) &&
+      !(
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main'
+      ) &&
+      !contains(github.event.head_commit.message, 'chore: update preprocessing DVC lock')
     needs: preprocessing
     uses: ./.github/workflows/ci_application.yaml
     secrets: inherit
@@ -58,8 +72,7 @@ jobs:
     if: |
       github.event_name == 'push' &&
       github.ref == 'refs/heads/develop'
-    needs:
-      - application
+    needs: application
     uses: ./.github/workflows/cdelivery_staging.yaml
     secrets: inherit
 
@@ -67,7 +80,5 @@ jobs:
     if: |
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main'
-    needs:
-      - application
     uses: ./.github/workflows/cdelivery_production.yaml
     secrets: inherit

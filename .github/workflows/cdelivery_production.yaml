@@ -125,10 +125,15 @@ jobs:
               --username "$GHCR_USERNAME" \
               --password-stdin
 
-          export CHROMADB_FINAL_IMAGE="${CHROMADB_REGISTRY_IMAGE}:${BUILD_SHA}"
-          export RAG_IMAGE="${RAG_REGISTRY_IMAGE}:${BUILD_SHA}"
-          export ORCHESTRATOR_IMAGE="${ORCHESTRATOR_REGISTRY_IMAGE}:${BUILD_SHA}"
-          export GUI_IMAGE="${GUI_REGISTRY_IMAGE}:${BUILD_SHA}"
+          export CHROMADB_FINAL_IMAGE="${CHROMADB_REGISTRY_IMAGE}:staging"
+          export RAG_IMAGE="${RAG_REGISTRY_IMAGE}:staging"
+          export ORCHESTRATOR_IMAGE="${ORCHESTRATOR_REGISTRY_IMAGE}:staging"
+          export GUI_IMAGE="${GUI_REGISTRY_IMAGE}:staging"
+          
+          docker pull "$CHROMADB_FINAL_IMAGE"
+          docker pull "$RAG_IMAGE"
+          docker pull "$ORCHESTRATOR_IMAGE"
+          docker pull "$GUI_IMAGE"
 
           export OPENAI_API_KEY
           export OLLAMA_URL
@@ -141,18 +146,17 @@ jobs:
 
           ./scripts/run-application.sh up application/docker-compose.nginx.yaml
 
-          promote() {
+          promote_to_production() {
             local image="$1"
-            local tag="$2"
-
-            docker tag "${image}:${BUILD_SHA}" "${image}:${tag}"
-            docker push "${image}:${tag}"
+          
+            docker tag "${image}:staging" "${image}:production"
+            docker push "${image}:production"
           }
-
-          promote "$CHROMADB_REGISTRY_IMAGE" "production"
-          promote "$RAG_REGISTRY_IMAGE" "production"
-          promote "$ORCHESTRATOR_REGISTRY_IMAGE" "production"
-          promote "$GUI_REGISTRY_IMAGE" "production"
+          
+          promote_to_production "$CHROMADB_REGISTRY_IMAGE"
+          promote_to_production "$RAG_REGISTRY_IMAGE"
+          promote_to_production "$ORCHESTRATOR_REGISTRY_IMAGE"
+          promote_to_production "$GUI_REGISTRY_IMAGE"
 
           docker image prune -f
           REMOTE_SCRIPT

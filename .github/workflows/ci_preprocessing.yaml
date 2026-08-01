@@ -186,7 +186,12 @@ jobs:
       - name: Check workspace before repro
         run: |
           find .local -maxdepth 2 -printf "%P\n"
-          
+
+      - name: Inspect Chroma DB before repro
+        run: |
+          ls -l .local/chroma
+          stat .local/chroma/chroma.sqlite3
+
       - name: Reproduce preprocessing data
         run: |
           dvc repro preprocessing
@@ -273,6 +278,12 @@ jobs:
           docker compose \
             -f preprocessing/docker-compose.yaml \
             logs --no-color || true
+
+      - name: Inspect Chroma DB after failure
+        if: failure()
+        run: |
+          ls -l .local/chroma || true
+          stat .local/chroma/chroma.sqlite3 || true
 
       - name: Clean up
         if: always()

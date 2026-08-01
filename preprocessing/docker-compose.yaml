@@ -21,7 +21,9 @@ services:
     image: chromadb/chroma:1.5.9
     user: "${HOST_UID}:${HOST_GID}"
     volumes:
-      - ../.local/chroma:/data
+      - ../.local:/data
+    environment:
+      CHROMA_PERSIST_PATH: /data/chroma
     networks:
       - preprocessing
 

@@ -1,161 +1,238 @@
-
-
-CISUC Chatbot — Developer Crash Course
+# CISUC Chatbot — Developer Crash Course
 
 This guide walks you through the typical development workflow, from creating a feature branch to testing your changes locally and opening a Pull Request.
 
-⸻
+---
 
-1. Create a feature branch
+## 1. Create a feature branch
 
-Always start from the latest develop branch.
+Always start from the latest `develop` branch.
 
+```bash
 git switch develop
 git pull origin develop
 git switch -c feature/my-feature
+```
 
 Work normally, committing your changes as you go.
 
+```bash
 git add .
 git commit -m "feat: implement my new feature"
 git push -u origin feature/my-feature
+```
 
-⸻
+---
 
-2. Run the preprocessing pipeline locally
+## 2. Run the preprocessing pipeline locally
 
 The preprocessing pipeline builds the knowledge base used by the chatbot.
 
-Step 1 — Build preprocessing containers
+### Step 1 — Build preprocessing containers
 
+```bash
 ./scripts/build-preprocessing.sh
+```
 
-⸻
+---
 
-Step 2 — Run data ingestion
+### Step 2 — Run data ingestion
 
-Run every ingestion source
+Run every ingestion source:
 
+```bash
 ./scripts/run-ingestion.sh
+```
 
-Or run individual sources
+Or run individual sources:
 
+```bash
 ./scripts/run-ingestion.sh --source api
 ./scripts/run-ingestion.sh --source static
 ./scripts/run-ingestion.sh --source news
+```
 
-⸻
+---
 
-Step 3 — Run enrichment
+### Step 3 — Run enrichment
 
 For quick testing (recommended while developing):
 
+```bash
 ./scripts/run-enhancement.sh --limit 3
+```
+
+> **Note**
+>
+> The `--limit` option creates a dry-run dataset for testing. It does **not** populate the Chroma database.
 
 To enrich the complete dataset:
 
+```bash
 ./scripts/run-enhancement.sh
+```
 
-Note
+> **Note**
+>
+> Running the full enhancement pipeline sends requests to the OpenAI API.
 
-Running the full enhancement pipeline sends requests to the OpenAI API.
+---
 
-⸻
+### Step 4 — Generate embeddings
 
-Step 4 — Generate embeddings
-
+```bash
 ./scripts/run-embeddings.sh
+```
 
-⸻
+This populates the running Chroma database with the generated embeddings.
 
-Step 5 — Finish preprocessing
+---
 
+### Step 5 — Finish preprocessing
+
+```bash
 ./scripts/finish-preprocessing.sh
+```
 
-At this point, the preprocessing artifacts are ready.
+This snapshots the populated Chroma database into the final Docker image used by the chatbot.
 
-⸻
+---
 
-3. Run the chatbot locally
+## 3. Run the chatbot locally
 
 Build and start the application.
 
+```bash
 ./scripts/run-application.sh up-build application/docker-compose.nginx.yaml
+```
 
-The chatbot will be available at
+The chatbot will be available at:
 
+```
 http://localhost
+```
 
-Note
+> **Note**
+>
+> Some containers may require several seconds before becoming healthy. If the UI loads before the backend is ready, simply wait a few moments and refresh the page.
 
-Some containers may require several seconds before becoming healthy. If the UI loads before the backend is ready, simply wait a few moments and refresh the page.
+---
 
-⸻
+## 4. Keep your feature branch up to date
 
-4. Keep your feature branch up to date
+If your feature branch lives for several days, regularly update it with the latest changes from `develop`.
 
-If your feature branch lives for several days, regularly update it with the latest changes from develop.
-
+```bash
 git switch feature/my-feature
 git fetch origin
 git merge origin/develop
+```
 
 Doing this before requesting a review helps:
 
-* reduce merge conflicts;
-* ensure the preview matches the latest develop;
-* avoid surprises during the final merge.
+- reduce merge conflicts;
+- ensure the preview matches the latest `develop`;
+- avoid surprises during the final merge.
 
-⸻
+---
 
-5. Open a Pull Request
+## 5. Open a Pull Request
 
 When your feature is ready for review, open a Pull Request:
 
+```
 feature/my-feature → develop
+```
 
 The CI/CD pipeline will automatically:
 
-* build the application;
-* execute the tests;
-* deploy a preview environment.
+- build the application;
+- execute the tests;
+- preprocess the knowledge base when required;
+- deploy a preview environment.
 
-The preview is built from GitHub’s temporary merge of your feature branch with the current develop branch (provided the branches can be merged automatically). This lets reviewers test the application as it would behave after being merged into develop.
+The preview is built from GitHub's temporary merge of your feature branch with the current `develop` branch (provided the branches can be merged automatically). This lets reviewers test the application as it would behave after being merged into `develop`.
 
-⸻
+---
 
-6. Available environments
+## 6. DVC and automated updates
 
-Local development
+The preprocessing pipeline uses **DVC (Data Version Control)** to cache the expensive preprocessing stages. Most of the time this is transparent: if the cached outputs are still valid, they are reused instead of being regenerated.
 
+When preprocessing produces updated outputs, the CI pipeline may automatically update `dvc.lock` and push a commit to your feature branch.
+
+This is expected.
+
+If you later receive an error such as:
+
+```text
+! [rejected] feature/my-feature -> feature/my-feature (fetch first)
+```
+
+your local branch is simply behind the remote because of the automated DVC commit.
+
+Synchronize your branch before pushing again:
+
+```bash
+git pull --rebase origin feature/my-feature
+git push
+```
+
+If you have uncommitted local changes:
+
+```bash
+git stash
+git pull --rebase origin feature/my-feature
+git stash pop
+```
+
+Resolve any merge conflicts if they occur, then continue working normally.
+
+---
+
+## 7. Available environments
+
+### Local development
+
+```
 http://localhost
+```
 
-⸻
+---
 
-Preview (one per Pull Request)
+### Preview (one per Pull Request)
 
+```
 http://10.3.1.8:8080/preview/<PR_NUMBER>/
+```
 
 Example:
 
+```
 http://10.3.1.8:8080/preview/21/
+```
 
-⸻
+---
 
-Development / Staging
+### Development / Staging
 
+```
 http://10.3.1.8
+```
 
-⸻
+---
 
-Production
+### Production
 
+```
 http://10.3.2.139
+```
 
-⸻
+---
 
-Typical workflow
+## Typical workflow
 
+```text
 Update develop
         │
         ▼
@@ -184,5 +261,6 @@ Preview environment is deployed
         │
         ▼
 Review → Merge into develop
+```
 
-This version explains not only what to do, but also why each step exists, making it more useful for someone joining the project for the first time.
+This workflow is designed to let developers iterate locally, validate changes before opening a Pull Request, and rely on the automated CI/CD pipeline to build, test, preprocess, and deploy a preview environment for review.

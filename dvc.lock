@@ -1,7 +1,7 @@
 schema: '2.0'
 stages:
   preprocessing:
-    cmd: ./scripts/run-full-processing.sh
+    cmd: ./scripts/run-preprocessing-data.sh
     deps:
     - path: config/chatbot-common.env
       hash: md5
@@ -13,42 +13,32 @@ stages:
       size: 152
     - path: preprocessing
       hash: md5
-      md5: 3d559ac56dc093720ddd5f957a59a8fa.dir
-      size: 376169
-      nfiles: 63
-    - path: scripts/build-preprocessing.sh
-      hash: md5
-      md5: e6ad42e19bffb9cedcea02f4676ed8bd
-      size: 223
-      isexec: true
-    - path: scripts/finish-preprocessing.sh
-      hash: md5
-      md5: 297d4eba16781fb16fca18020c79b120
-      size: 352
-      isexec: true
-    - path: scripts/run-embeddings.sh
-      hash: md5
-      md5: ab2432504dedf8caacdf5a6b1d5d869c
-      size: 553
-      isexec: true
+      md5: 2bd256e68192a0446bb6d848539d5e3d.dir
+      size: 224365
+      nfiles: 36
     - path: scripts/run-enhancement.sh
       hash: md5
       md5: 3c6120f8528b1c5031bab459a04fcaec
       size: 540
-      isexec: true
-    - path: scripts/run-full-processing.sh
-      hash: md5
-      md5: 795820b87d867bdc20c0ebd6e9106ef2
-      size: 999
       isexec: true
     - path: scripts/run-ingestion.sh
       hash: md5
       md5: 6af8375580e5fc79ce500572cfd26375
       size: 641
       isexec: true
-    outs:
-    - path: .local
+    - path: scripts/run-preprocessing-data.sh
       hash: md5
-      md5: eaba87ab7a0f34bb420b6820061c3d45.dir
-      size: 168132031
-      nfiles: 98
+      md5: 2bcf893039d5d1906089783684594610
+      size: 184
+      isexec: true
+    outs:
+    - path: .local/enriched
+      hash: md5
+      md5: 82937a8e11899b10382a9597065dc9eb.dir
+      size: 245152
+      nfiles: 6
+    - path: .local/raw
+      hash: md5
+      md5: bcf2f1d829e8dcbec7adacf3de1213aa.dir
+      size: 70735250
+      nfiles: 81

@@ -9,6 +9,7 @@ set +a
 ./scripts/run-ingestion.sh
 ./scripts/run-enhancement.sh --limit 3
 
+
 echo "===== Host .local ====="
 pwd
 find .local -maxdepth 3 -printf "%M %u:%g %p\n"

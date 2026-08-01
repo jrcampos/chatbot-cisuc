@@ -109,9 +109,6 @@ jobs:
           else
             echo "reused=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Check workspace before repro
-        run: |
-          find .local -maxdepth 2 -printf "%P\n"
 
       - name: Reproduce preprocessing data
         run: |

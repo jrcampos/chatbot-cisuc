@@ -28,17 +28,17 @@ stages:
       isexec: true
     - path: scripts/run-preprocessing-data.sh
       hash: md5
-      md5: 5b1e9a5b2e4d1510271dd91317476edb
-      size: 174
+      md5: 5c118583be6573f1243c18b64075fb5b
+      size: 175
       isexec: true
     outs:
     - path: .local/enriched
       hash: md5
-      md5: 1f45cf3eeac74d41fa7e0f82a988fc0c.dir
-      size: 5661883
+      md5: 6c8139cffb0e9eaa2a858a8c9179dcf5.dir
+      size: 5665016
       nfiles: 9
     - path: .local/raw
       hash: md5
-      md5: 184cc7df611e549e75e21d0a8ae521ca.dir
+      md5: 4c9697a25a0d5cde523c6549b940e7b8.dir
       size: 70735250
       nfiles: 81

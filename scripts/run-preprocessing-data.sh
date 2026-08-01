@@ -7,5 +7,5 @@ source config/preprocessing.env
 set +a
 
 ./scripts/run-ingestion.sh
-./scripts/run-enhancement.sh
+./scripts/run-enhancement.sh --limit 3
 ./scripts/run-embeddings.sh

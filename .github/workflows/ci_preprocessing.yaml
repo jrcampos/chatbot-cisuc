@@ -97,6 +97,70 @@ jobs:
         run: |
           ./scripts/build-preprocessing.sh
 
+      - name: Inspect host workspace
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          pwd
+
+          ls -ld .local .local/chroma
+          ls -la .local/chroma || true
+
+          stat .local
+          stat .local/chroma
+
+          find .local -maxdepth 2 \
+            -printf "%M %u:%g %p\n"
+
+      - name: Inspect Docker mount
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          docker compose \
+            -f preprocessing/docker-compose.yaml \
+            ps
+
+          docker inspect preprocessing-chromadb-1 \
+            --format '{{json .Mounts}}'
+
+      - name: Test write inside Chroma container
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          docker compose \
+            -f preprocessing/docker-compose.yaml \
+            exec -T chromadb sh -c '
+              echo "== id =="
+              id
+
+              echo "== /data =="
+              ls -ld /data
+
+              echo "== contents =="
+              find /data -maxdepth 2 \
+                -printf "%M %u:%g %p\n"
+
+              echo "== write test =="
+              touch /data/test-write
+              echo ok >/data/test-write
+              cat /data/test-write
+              rm /data/test-write
+            '
+
+      - name: Inspect SQLite files
+        shell: bash
+        run: |
+          docker compose \
+            -f preprocessing/docker-compose.yaml \
+            exec -T chromadb sh -c '
+              find /data \
+                -type f \
+                -printf "%M %u:%g %p\n"
+            '
+
       - name: Check preprocessing status
         id: dvc-status
         shell: bash

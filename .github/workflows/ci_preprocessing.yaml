@@ -83,113 +83,17 @@ jobs:
         run: |
           mkdir -p \
             .local/raw \
-            .local/enriched \
-            .local/chroma
-
+            .local/enriched
+          
           dvc unprotect \
             .local/raw \
-            .local/enriched \
-            .local/chroma
+            .local/enriched
 
           chmod -R u+rwX,g+rwX .local
-      - name: Check workspace before Docker
-        run: |
-          pwd
-          find .local -maxdepth 2 -printf "%P\n"
 
       - name: Build preprocessing image
         run: |
           ./scripts/build-preprocessing.sh
-
-      - name: Diagnose Chroma mount
-        shell: bash
-        run: |
-          docker compose \
-            -f preprocessing/docker-compose.yaml \
-            exec -T chromadb sh -c '
-              echo "=== mount ==="
-              mount | grep " /data " || true
-
-              echo "=== df ==="
-              df -h /data || true
-
-              echo "=== stat ==="
-              stat /data || true
-
-              echo "=== ls ==="
-              ls -la /data || true
-
-              echo "=== touch ==="
-              touch /data/test && echo OK || echo FAIL
-            '
-
-      - name: Check workspace after Docker
-        run: |
-          find .local -maxdepth 2 -printf "%P\n"
-
-      - name: Inspect host workspace
-        shell: bash
-        run: |
-          set -euxo pipefail
-
-          pwd
-
-          ls -ld .local .local/chroma
-          ls -la .local/chroma || true
-
-          stat .local
-          stat .local/chroma
-
-          find .local -maxdepth 2 \
-            -printf "%M %u:%g %p\n"
-
-      - name: Inspect Docker mount
-        shell: bash
-        run: |
-          set -euxo pipefail
-
-          docker compose \
-            -f preprocessing/docker-compose.yaml \
-            ps
-
-          docker inspect preprocessing-chromadb-1 \
-            --format '{{json .Mounts}}'
-
-      - name: Test write inside Chroma container
-        shell: bash
-        run: |
-          set -euxo pipefail
-
-          docker compose \
-            -f preprocessing/docker-compose.yaml \
-            exec -T chromadb sh -c '
-              echo "== id =="
-              id
-
-              echo "== /data =="
-              ls -ld /data
-
-              echo "== contents =="
-              find /data -maxdepth 2 \
-                -printf "%M %u:%g %p\n"
-
-              echo "== write test =="
-              touch /data/test-write
-              echo ok >/data/test-write
-              cat /data/test-write
-              rm /data/test-write
-            '
-
-      - name: Inspect SQLite files
-        shell: bash
-        run: |
-          docker compose \
-            -f preprocessing/docker-compose.yaml \
-            exec -T chromadb sh -c '
-              find /data \
-                -type f \
-                -printf "%M %u:%g %p\n"
-            '
 
       - name: Check preprocessing status
         id: dvc-status
@@ -209,27 +113,6 @@ jobs:
         run: |
           find .local -maxdepth 2 -printf "%P\n"
 
-      - name: Inspect Chroma DB before repro
-        run: |
-          ls -l .local/chroma
-          stat .local/chroma/chroma.sqlite3
-
-      - name: Diagnose before repro
-        run: |
-          echo "Host:"
-          stat .local/chroma
-          ls -la .local/chroma
-
-          docker compose \
-            -f preprocessing/docker-compose.yaml \
-            exec -T chromadb \
-            stat /data
-
-          docker compose \
-            -f preprocessing/docker-compose.yaml \
-            exec -T chromadb \
-            ls -la /data
-
       - name: Reproduce preprocessing data
         run: |
           dvc repro preprocessing
@@ -245,6 +128,10 @@ jobs:
       - name: Store preprocessing data
         run: |
           dvc push
+
+      - name: Populate Chroma database
+        run: |
+          ./scripts/run-embeddings.sh
 
       - name: Finalize preprocessing image
         run: |
@@ -319,9 +206,26 @@ jobs:
 
       - name: Inspect Chroma DB after failure
         if: failure()
+        shell: bash
         run: |
-          ls -l .local/chroma || true
-          stat .local/chroma/chroma.sqlite3 || true
+          container_id="$(
+            docker compose \
+              -f preprocessing/docker-compose.yaml \
+              ps -q chromadb 2>/dev/null || true
+          )"
+
+          if [[ -n "$container_id" ]]; then
+            docker exec "$container_id" sh -c '
+              echo "Chroma database directory:"
+              ls -la /chroma-image-data || true
+
+              echo "Chroma database files:"
+              find /chroma-image-data \
+                -maxdepth 4 \
+                -type f \
+                -print || true
+            ' || true
+          fi
 
       - name: Clean up
         if: always()

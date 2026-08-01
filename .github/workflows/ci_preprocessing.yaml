@@ -79,18 +79,19 @@ jobs:
           echo "HOST_GID=$(id -g)" >> "$GITHUB_ENV"
 
       - name: Prepare preprocessing workspace
+        shell: bash
         run: |
           mkdir -p \
             .local/raw \
             .local/enriched \
             .local/chroma
 
-          chmod -R u+rwX,g+rwX,o+rwX .local/chroma
+          dvc unprotect \
+            .local/raw \
+            .local/enriched \
+            .local/chroma
 
-      - name: Prepare preprocessing workspace
-        run: |
-          mkdir -p .local/raw .local/enriched .local/chroma
-          chmod -R 777 .local/chroma
+          chmod -R u+rwX,g+rwX .local
           
       - name: Build preprocessing image
         run: |

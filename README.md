@@ -195,22 +195,23 @@ The preprocessing subsystem prepares the knowledge base used by the runtime appl
 
 The platform combines modern web technologies with information retrieval and containerized deployment.
 
-| Technology | Purpose |
-|------------|---------|
-| React | Frontend user interface |
-| TypeScript | Typed frontend development |
-| Vite | Frontend build system |
-| Python | Backend services and preprocessing |
-| ChromaDB | Vector database |
-| BM25 | Lexical retrieval |
-| Docker | Containerization |
-| Docker Compose | Service orchestration |
-| GitHub Actions | CI/CD automation |
+| Technology                | Purpose |
+|---------------------------|---------|
+| React                     | Frontend user interface |
+| TypeScript                | Typed frontend development |
+| Vite                      | Frontend build system |
+| Python                    | Backend services and preprocessing |
+| ChromaDB                  | Vector database |
+| BM25                      | Lexical retrieval |
+| DVC                       | Versioning and distribution of preprocessing artifacts |
+| Docker                    | Containerization |
+| Docker Compose            | Service orchestration |
+| GitHub Actions            | CI/CD automation |
 | GitHub Container Registry | Container registry |
-| Traefik | Preview routing |
-| Nginx | Staging and production reverse proxy |
-| OpenAI | Hosted language models |
-| Ollama | Self-hosted language models |
+| Traefik                   | Preview routing |
+| Nginx                     | Staging and production reverse proxy |
+| OpenAI                    | Hosted language models |
+| Ollama                    | Self-hosted language models |
 
 Each technology was selected according to its role within the overall architecture, allowing the platform to remain modular while supporting reproducible deployments across different environments.
 
@@ -730,7 +731,7 @@ The principal outputs include:
 - lexical search indices;
 - ChromaDB collections and metadata.
 
-These artifacts collectively constitute the chatbot's knowledge base.
+These artifacts collectively constitute the chatbot's knowledge base. The generated preprocessing artifacts are versioned using Data Version Control (DVC). This allows each version of the knowledge base—including the BM25 index, ChromaDB collections, and associated metadata—to be uniquely associated with a specific revision of the repository while avoiding storing large binary artifacts directly in Git. During Continuous Integration, these versioned artifacts are retrieved and incorporated into the runtime deployment, ensuring that the application and its knowledge base remain synchronized and reproducible.
 
 Once preprocessing has completed successfully, the runtime application no longer needs to access the original CISUC sources. Instead, it performs retrieval exclusively over the prepared indices, significantly reducing runtime latency while ensuring consistent retrieval behaviour.
 
@@ -1277,6 +1278,8 @@ Developers should avoid relying on `.local` configuration when implementing func
 
 The `REUSE_LOCAL_PREPROCESSING` environment variable is an example of configuration intended exclusively for local development. When enabled, the application reuses preprocessing artifacts generated locally instead of obtaining the corresponding resources from the container registry. This reduces iteration time during development by avoiding unnecessary downloads or rebuilds. The variable is not enabled in CI/CD pipelines or deployment environments, ensuring that preview, staging, and production deployments always use reproducible preprocessing artifacts built through the official automation pipeline.
 
+During local development, DVC may also be used to retrieve previously generated preprocessing artifacts without executing the complete preprocessing pipeline. This enables developers to work with representative datasets while avoiding the computational cost of rebuilding the knowledge base.
+
 ---
 
 ## 6.8 Testing
@@ -1406,6 +1409,8 @@ Its responsibilities include:
 - performing semantic enhancement;
 - generating embeddings;
 - preparing retrieval artifacts.
+
+Once preprocessing completes successfully, the generated artifacts are published through DVC to the project’s configured remote storage. The application build workflow later retrieves these versioned artifacts, ensuring that the deployed runtime always uses the exact knowledge base corresponding to the source code revision that triggered the pipeline.
 
 The preprocessing workflow is implemented independently from the application build.
 

@@ -46,7 +46,7 @@ else:
     OLLAMA_URL: str = os.environ["OLLAMA_URL"]
     
     slm_extrator: ChatOllama = ChatOllama(base_url=OLLAMA_URL, model=SLM_MODEL, temperature=0.0, truncate=False)
-    llm_principal: ChatOllama = ChatOllama(base_url=OLLAMA_URL, model=LLM_MODEL, temperature=0.2, truncate=False)
+    llm_principal: ChatOllama = ChatOllama(base_url=OLLAMA_URL, model=LLM_MODEL, temperature=0.5, truncate=False)
 
 print(f"       -> Extrator (Rápido): {SLM_MODEL}")
 print(f"       -> Gerador (Pesado): {LLM_MODEL}")

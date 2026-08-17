@@ -1,6 +1,12 @@
 # Local generated workspace
 /.local/
 
+# QA generation: corpus extraído da ChromaDB (regenerável, ~7MB)
+/tests/qa_generation/corpus/
+
+# QA generation: ground truth e validação (partilhados diretamente, não versionados)
+/tests/qa_generation/output/
+
 # Runtime logs
 /logs/
 *.log

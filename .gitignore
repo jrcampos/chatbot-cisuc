@@ -47,6 +47,11 @@ wheelhouse/
 venv/
 env/
 
+# UV files
+.python-version
+pyproject.toml
+uv.lock
+
 # Temporary files
 *.tmp
 *.temp
@@ -80,3 +85,5 @@ Thumbs.db
 
 *.tgz
 /.local
+
+CLAUDE.md

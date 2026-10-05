@@ -21,6 +21,7 @@ from langchain_core.documents import Document
 from langchain_community.retrievers import BM25Retriever
 from rank_bm25 import BM25Okapi
 from typing import Any
+import re
 
 # ===== Configuration from Environment =====
 # ChromaDB Connection
@@ -82,6 +83,12 @@ for tentativa in range(1, MAX_RETRYS + 1):
             vector_store = None
             retriever_vetorial = None
 
+def _tokenizar(texto: str) -> list[str]:
+    """Same tokenizer for the BM25 index and the rerank pass. The LangChain default
+    (str.split) is case-sensitive and keeps punctuation ("Bycatch," != "bycatch")."""
+    return re.findall(r"\w+", texto.lower())
+
+
 # 2. Configure Lexical Retriever (BM25)
 print("[INFO] A construir o Índice BM25...")
 docs_para_bm25: list[Document] = []
@@ -105,7 +112,7 @@ else:
 # Initialize BM25 retriever if documents were successfully retrieved
 retriever_palavras_chave: BM25Retriever | None = None
 if docs_para_bm25:
-    retriever_palavras_chave = BM25Retriever.from_documents(docs_para_bm25)
+    retriever_palavras_chave = BM25Retriever.from_documents(docs_para_bm25, preprocess_func=_tokenizar)
     retriever_palavras_chave.k = 10
 
 # 3. Hybrid Weights and Orchestration Ready
@@ -137,8 +144,8 @@ def _rerank_pool(
     if not candidates:
         return []
 
-    tokenized_query = query.lower().split()
-    tokenized_docs = [doc.page_content.lower().split() for doc in candidates]
+    tokenized_query = _tokenizar(query)
+    tokenized_docs = [_tokenizar(doc.page_content) for doc in candidates]
     bm25_scores = list(BM25Okapi(tokenized_docs).get_scores(tokenized_query))
     rrf_values = [rrf_scores.get(_rrf_key(doc), 0.0) for doc in candidates]
 

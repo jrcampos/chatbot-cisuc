@@ -9,6 +9,9 @@ Este script implementa a avaliação formal usando a framework Ragas:
 
 import os
 import json
+import logging
+import time
+from datetime import datetime
 from pathlib import Path
 import requests
 import pandas as pd
@@ -23,6 +26,7 @@ from ragas.metrics import (
     context_recall
 )
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_core.callbacks import BaseCallbackHandler
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 BASE_DIR = SCRIPT_DIR.parent
@@ -44,14 +48,78 @@ carregar_env(BASE_DIR / "secrets" / "evaluation.env")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL_EVALUATOR = os.getenv("OPENAI_MODEL_EVALUATOR", "gpt-5.4")
 OPENAI_MODEL_EMBEDDINGS = os.getenv("OPENAI_MODEL_EMBEDDINGS", "text-embedding-3-small")
-RAG_API_URL = os.getenv("RAG_API_URL", "http://127.0.0.1:8002/query")  # via orquestrador (RAG não exposto)
-ORCHESTRATOR_API_URL = os.getenv("ORCHESTRATOR_API_URL", "http://127.0.0.1:8002/chat")
+# Fase 2 usa o mesmo caminho de produção (retrieval + geração) e devolve os contextos reais
+ORCHESTRATOR_AVALIACAO_URL = os.getenv("ORCHESTRATOR_AVALIACAO_URL", "http://127.0.0.1:8002/chat/avaliacao")
+ORCHESTRATOR_TIMEOUT = int(os.getenv("ORCHESTRATOR_TIMEOUT", "300"))
 
 # Ficheiros de Estado (tests/qa_generation/output/, já gitignored)
 QA_GENERATION_OUTPUT_DIR = SCRIPT_DIR / "qa_generation" / "output"
 GROUND_TRUTH_FILE = QA_GENERATION_OUTPUT_DIR / "ragas_ground_truth.json"
 TEST_DATASET_FILE = QA_GENERATION_OUTPUT_DIR / "ragas_test_dataset.json"
 RESULTS_CSV = QA_GENERATION_OUTPUT_DIR / "ragas_evaluation_results.csv"
+LOGS_DIR = QA_GENERATION_OUTPUT_DIR / "logs"
+METRICAS = ["context_precision", "context_recall", "faithfulness", "answer_relevancy"]
+
+
+class RegistoChamadasJuiz(BaseCallbackHandler):
+    """Grava uma linha JSON por chamada ao juiz: saída bruta (ou erro), para ver porque é que o RAGAS devolve NaN."""
+
+    def __init__(self, caminho: Path):
+        self.caminho = caminho
+        self._inicio: dict = {}
+
+    def _escrever(self, registo: dict) -> None:
+        with self.caminho.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(registo, ensure_ascii=False) + "\n")
+
+    def on_chat_model_start(self, serialized, messages, *, run_id, **kwargs):
+        self._inicio[str(run_id)] = time.time()
+
+    def on_llm_end(self, response, *, run_id, **kwargs):
+        geracoes = response.generations[0] if response.generations else []
+        self._escrever({
+            "run_id": str(run_id),
+            "seg": round(time.time() - self._inicio.pop(str(run_id), time.time()), 2),
+            "estado": "ok",
+            "saida": geracoes[0].text if geracoes else "",
+        })
+
+    def on_llm_error(self, error, *, run_id, **kwargs):
+        self._escrever({
+            "run_id": str(run_id),
+            "seg": round(time.time() - self._inicio.pop(str(run_id), time.time()), 2),
+            "estado": "erro",
+            "erro": f"{type(error).__name__}: {error}",
+        })
+
+
+def ativar_logs_juiz() -> tuple[Path, Path]:
+    """Logs da execução: texto do logger 'ragas' (erros de Job com tipo e mensagem) e JSONL das chamadas ao juiz."""
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    carimbo = datetime.now().strftime("%Y%m%d_%H%M%S")
+    caminho_txt = LOGS_DIR / f"ragas_{carimbo}.log"
+    caminho_jsonl = LOGS_DIR / f"juiz_{carimbo}.jsonl"
+
+    handler = logging.FileHandler(caminho_txt, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    logger_ragas = logging.getLogger("ragas")
+    logger_ragas.setLevel(logging.INFO)
+    logger_ragas.addHandler(handler)
+
+    juiz_llm.callbacks = [RegistoChamadasJuiz(caminho_jsonl)]
+    return caminho_txt, caminho_jsonl
+
+
+def resumir_juiz(caminho_jsonl: Path, df) -> None:
+    """Resumo no terminal: falhas do juiz por tipo e linhas NaN por métrica."""
+    registos = [json.loads(l) for l in caminho_jsonl.read_text(encoding="utf-8").splitlines() if l.strip()]
+    erros = [r for r in registos if r["estado"] == "erro"]
+    print(f"\nChamadas ao juiz: {len(registos)} (erros: {len(erros)})")
+    for r in erros[:5]:
+        print(f"   erro: {r['erro'][:200]}")
+    print("Linhas NaN por métrica:")
+    for m in METRICAS:
+        print(f"   {m}: {int(df[m].isna().sum())}")
 
 if not OPENAI_API_KEY:
     print("[ERRO] OPENAI_API_KEY não encontrada em secrets/evaluation.env!")
@@ -77,29 +145,23 @@ def fase_2_executar_rag_local():
         pergunta = item["question"]
         print(f"[{i}/{len(qa_pairs)}] ({item.get('topico', 'Geral')} - {item['dificuldade']}): {pergunta[:60]}...")
         
-        # 1. Obter os Chunks (Contexts)
-        contexts = []
+        # Resposta e contextos vêm da mesma chamada ao pipeline de produção
+        alvos, contexts, answer, erro = [], [], "", None
         try:
-            resp_rag = requests.post(RAG_API_URL, json={"query": pergunta, "top_k": 5}, timeout=10)
-            if resp_rag.status_code == 200:
-                contexts = [c.get("text") for c in resp_rag.json().get("results", [])]
+            resp = requests.post(ORCHESTRATOR_AVALIACAO_URL, json={"pergunta": pergunta}, timeout=ORCHESTRATOR_TIMEOUT)
+            resp.raise_for_status()
+            dados_resp = resp.json()
+            alvos, contexts, answer = dados_resp["alvos"], dados_resp["contexts"], dados_resp["response"].strip()
         except Exception as e:
-            print(f"   [AVISO RAG] {e}")
-
-        # 2. Obter a Resposta do LLM (Answer)
-        answer = ""
-        try:
-            with requests.post(ORCHESTRATOR_API_URL, json={"pergunta": pergunta}, stream=True, timeout=60) as r:
-                for chunk in r.iter_content(chunk_size=None, decode_unicode=True):
-                    if chunk:
-                        answer += chunk
-        except Exception as e:
-             answer = f"[ERRO NO ORQUESTRADOR]: {e}"
+            erro = str(e)
+            print(f"   [ERRO ORQUESTRADOR] {e}")
 
         ragas_dataset.append({
             "question": pergunta,
-            "answer": answer.strip(),
+            "answer": answer,
             "contexts": contexts,
+            "alvos": alvos,
+            "erro": erro,
             "ground_truth": item["ground_truth"],
             "dificuldade": item["dificuldade"],
             "topico": item.get("topico", "N/A")
@@ -118,7 +180,16 @@ def fase_3_avaliar_com_ragas():
         return
 
     with open(TEST_DATASET_FILE, "r", encoding="utf-8") as f:
-        dados = json.load(f)
+        dados_todos = json.load(f)
+
+    # Perguntas sem resposta do orquestrador (timeout, erro HTTP) não são avaliáveis
+    dados = [d for d in dados_todos if not d.get("erro")]
+    print(f"A excluir {len(dados_todos) - len(dados)} perguntas com erro do orquestrador.")
+
+    # Para depuração: RAGAS_LIMITE=20 avalia só as primeiras N perguntas
+    limite = int(os.getenv("RAGAS_LIMITE", "0"))
+    if limite:
+        dados = dados[:limite]
 
     dados_formatados = {
         "question": [d["question"] for d in dados],
@@ -131,6 +202,9 @@ def fase_3_avaliar_com_ragas():
 
     print(f"A analisar {len(dados)} perguntas... (Isto consome tokens OpenAI)")
     
+    caminho_logs_txt, caminho_logs_juiz = ativar_logs_juiz()
+    print(f"Logs do juiz: {caminho_logs_juiz} e {caminho_logs_txt}")
+
     try:
         resultado = evaluate(
             dataset=dataset_hf,
@@ -149,10 +223,12 @@ def fase_3_avaliar_com_ragas():
         print(resultado)
         
         df = resultado.to_pandas()
-        
+        resumir_juiz(caminho_logs_juiz, df)
+
         # Juntar a Dificuldade e Tópico no CSV final
         df['dificuldade'] = [d.get("dificuldade", "N/A") for d in dados]
         df['topico'] = [d.get("topico", "N/A") for d in dados]
+        df['alvos'] = [" | ".join(d.get("alvos", [])) for d in dados]
         
         df.to_csv(RESULTS_CSV, index=False)
         print(f"\n✅ Relatório detalhado guardado em: {RESULTS_CSV}")

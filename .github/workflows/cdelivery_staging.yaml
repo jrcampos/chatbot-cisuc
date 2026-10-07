@@ -154,5 +154,5 @@ jobs:
           promote "$ORCHESTRATOR_REGISTRY_IMAGE" "staging"
           promote "$GUI_REGISTRY_IMAGE" "staging"
 
-          docker image prune -f
+          docker image prune -a -f
           REMOTE_SCRIPT

@@ -84,9 +84,11 @@ def generate_short_description(entity_type: str, text_content: str) -> str:
                 time.sleep(espera)
             else:
                 print(f"Erro na API da OpenAI: {e}")
-                return "Error generating description."
+                raise
 
-    return "Error generating description (Max retries exceeded)."
+    raise RuntimeError(
+        "OpenAI API request failed after maximum retries"
+    )
 
 def generate_research_focus(titulos_publicacoes: list[str]) -> str:
     """
@@ -126,8 +128,11 @@ def generate_research_focus(titulos_publicacoes: list[str]) -> str:
                 time.sleep(espera)
             else:
                 return "Error analyzing research focus."
+                raise
 
-    return "Error analyzing research focus (Max retries exceeded)."
+    raise RuntimeError(
+        "Error analyzing research focus (Max retries exceeded)."
+    )
 
 # ---------------------------------------------------------
 # Parsing and Processing Functions

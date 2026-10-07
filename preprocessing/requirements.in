@@ -2,11 +2,11 @@
 requests>=2.32.5,<3.0
 beautifulsoup4>=4.12.3,<5.0
 playwright>=1.58.0,<2.0
-lxml==4.9.4
+lxml==6.1.0
 
 # Configuration
 PyYAML==6.0.1
-python-dotenv==1.0.0
+python-dotenv==1.2.2
 
 # Enhancement
 openai>=2.28.0,<3.0

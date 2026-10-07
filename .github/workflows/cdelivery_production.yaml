@@ -158,6 +158,6 @@ jobs:
           promote_to_production "$ORCHESTRATOR_REGISTRY_IMAGE"
           promote_to_production "$GUI_REGISTRY_IMAGE"
 
-          docker image prune -f
+          docker image prune -a -f
           REMOTE_SCRIPT
           

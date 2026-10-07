@@ -65,6 +65,16 @@ jobs:
       - name: Make scripts executable
         run: chmod +x scripts/*.sh
 
+      - name: Capture previous preview images
+        id: previous_images
+        shell: bash
+        run: |
+          docker ps -a \
+            --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME" \
+            --format '{{.ID}}' \
+            | xargs -r docker inspect --format '{{.Image}}' \
+            | sort -u > /tmp/previous-preview-images.txt
+
       - name: Deploy preview
         id: deploy_preview
         run: |
@@ -72,9 +82,26 @@ jobs:
             up \
             application/docker-compose.preview.yaml
 
-      - name: Roll back failed preview deployment
-        if: ${{ failure() && steps.deploy_preview.outcome == 'failure' }}
+      - name: Remove previous preview images
+        if: success()
+        shell: bash
+        run: |
+          if [[ -f /tmp/previous-preview-images.txt ]]; then
+            while IFS= read -r image; do
+              [[ -n "$image" ]] && docker image rm "$image" || true
+            done < /tmp/previous-preview-images.txt
+          fi
+
+      - name: Rollback failed deployment
+        if: failure() && steps.deploy_preview.outcome == 'failure'
         run: |
           ./scripts/run-application.sh \
             down \
             application/docker-compose.preview.yaml
+
+          docker image rm \
+            "$CHROMADB_FINAL_IMAGE" \
+            "$RAG_IMAGE" \
+            "$ORCHESTRATOR_IMAGE" \
+            "$GUI_IMAGE" \
+            || true

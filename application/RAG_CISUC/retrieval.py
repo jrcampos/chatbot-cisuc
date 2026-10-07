@@ -19,6 +19,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_ollama import OllamaEmbeddings
 from langchain_core.documents import Document
 from langchain_community.retrievers import BM25Retriever
+from rank_bm25 import BM25Okapi
 from typing import Any
 
 # ===== Configuration from Environment =====
@@ -115,6 +116,46 @@ retriever_weights: dict[str, float] = {
 print("[INFO] Motor Híbrido pronto a receber pedidos!")
 
 
+def _rrf_key(doc: Document) -> str:
+    """Dedup/lookup key for a chunk: source file + text, so identical text from
+    different files doesn't collapse into one entry."""
+    return f"{doc.metadata.get('source_file', '')}::{doc.page_content}"
+
+
+def _rerank_pool(
+    candidates: list[Document],
+    query: str,
+    rrf_scores: dict[str, float],
+    top_k: int,
+) -> list[Document]:
+    """
+    Rescore a fused candidate pool with a local BM25 pass (lexical rescoring
+    against just this pool, no new ML dependency), blended 50/50 with the
+    original RRF score, to sharpen precision without discarding the semantic
+    recall vector search already contributed.
+    """
+    if not candidates:
+        return []
+
+    tokenized_query = query.lower().split()
+    tokenized_docs = [doc.page_content.lower().split() for doc in candidates]
+    bm25_scores = list(BM25Okapi(tokenized_docs).get_scores(tokenized_query))
+    rrf_values = [rrf_scores.get(_rrf_key(doc), 0.0) for doc in candidates]
+
+    def normalize(values: list[float]) -> list[float]:
+        lo, hi = min(values), max(values)
+        if hi - lo < 1e-9:
+            return [0.0] * len(values)
+        return [(v - lo) / (hi - lo) for v in values]
+
+    combined = [
+        0.5 * b + 0.5 * r
+        for b, r in zip(normalize(bm25_scores), normalize(rrf_values))
+    ]
+    ranked = sorted(zip(candidates, combined), key=lambda pair: pair[1], reverse=True)
+    return [doc for doc, _ in ranked][:top_k]
+
+
 def get_relevant_chunks(query: str, top_k: int = 15) -> list[dict[str, Any]]:
     """
     Perform a weighted hybrid search using both BM25 and Vector retrievers.
@@ -158,7 +199,7 @@ def get_relevant_chunks(query: str, top_k: int = 15) -> list[dict[str, Any]]:
     def apply_rrf(docs: list[Document], weight: float) -> None:
         """Helper to apply rank-based scoring to the global scores map."""
         for rank, doc in enumerate(docs):
-            key = doc.page_content
+            key = _rrf_key(doc)
             if key not in scores:
                 scores[key] = {"doc": doc, "score": 0.0}
             # Weighted contribution based on reciprocal rank
@@ -167,11 +208,18 @@ def get_relevant_chunks(query: str, top_k: int = 15) -> list[dict[str, Any]]:
     apply_rrf(bm25_docs, retriever_weights["bm25"])
     apply_rrf(vector_docs, retriever_weights["vector"])
 
-    # 5. Sort by consolidated score and truncate
+    # 5. Widen the pool past RRF, then rescore lexically against the query to
+    # sharpen precision (the right chunk is usually in the RRF pool, just
+    # buried in noise - see ragas_evaluation_report.md).
     sorted_entries = sorted(scores.values(), key=lambda x: x["score"], reverse=True)
-    top_docs = [entry["doc"] for entry in sorted_entries][:top_k]
-    
-    print(f"[RAG DEBUG] RRF - Reciprocal Rank Fusion retornou: {len(top_docs)} documentos.")
+    pool_size = max(top_k * 2, 20)
+    pool_entries = sorted_entries[:pool_size]
+    rrf_scores = {_rrf_key(entry["doc"]): entry["score"] for entry in pool_entries}
+    pool_docs = [entry["doc"] for entry in pool_entries]
+
+    top_docs = _rerank_pool(pool_docs, query, rrf_scores, top_k)
+
+    print(f"[RAG DEBUG] RRF + Rescoring retornaram: {len(top_docs)} documentos (pool: {len(pool_docs)}).")
 
     # 6. Format results for JSON serialization
     resultados: list[dict[str, Any]] = []

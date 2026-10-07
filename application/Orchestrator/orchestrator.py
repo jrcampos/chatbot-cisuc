@@ -13,7 +13,7 @@ import os
 import requests
 import time
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from langchain_ollama import ChatOllama
@@ -101,6 +101,8 @@ prompt_extracao = ChatPromptTemplate.from_messages([
     ("system", "A tua tarefa é extrair as palavras-chave principais desta pergunta do utilizador para usar num motor de busca.\n"
                 "REGRA 1: Se a pergunta contiver um NOME PRÓPRIO (ex: pessoa ou projeto), devolve APENAS esse nome.\n"
                 "REGRA 2: Se não houver nome próprio, devolve os 3 conceitos mais importantes, preferencialmente traduzidos para INGLÊS.\n"
+                "REGRA 3: Se a pergunta referenciar MAIS DE UMA entidade nomeada (ex: uma pessoa E um projeto, ou um grupo E um projeto), "
+                "devolve cada entidade separadamente, separadas por ' | ' (ex: 'João Silva | Projeto XPTO').\n"
                 "Devolve APENAS o texto de pesquisa, sem aspas, sem pontuação extra e sem explicações."),
     ("human", "{pergunta}")
 ])
@@ -126,6 +128,10 @@ gerador_resposta = prompt_resposta | llm_principal | StrOutputParser()
 class ChatRequest(BaseModel):
     pergunta: str = Field(..., description="The user's question to be processed.")
 
+class QueryRequest(BaseModel):
+    query: str = Field(..., description="The search string to find relevant chunks for.")
+    top_k: int = Field(default=15, description="Number of relevant documents to return.")
+
 # ---------------------------------------------------------
 # Main Logic (Streaming)
 # ---------------------------------------------------------
@@ -139,15 +145,26 @@ def gerador_streaming(pergunta_utilizador: str) -> Generator[str, Any, None]:
 
     print(f"\n[DEBUG] Alvo fixado pelo SLM: '{alvo_limpo}' (Demorou: {time.time() - tempo_extracao_start:.2f}s)")
 
-    # Step 2: Retrieve relevant content via RAG API
-    print(f"[DEBUG] A pedir informações à API RAG...")
+    # Step 2: Retrieve relevant content via RAG API (one call per entity when
+    # the SLM split a cross-entity question via REGRA 3, else a single call as before)
+    alvos = [a.strip() for a in alvo_limpo.split("|") if a.strip()] or [alvo_limpo]
+    print(f"[DEBUG] A pedir informações à API RAG para {len(alvos)} alvo(s): {alvos}")
+
     documentos: list[dict[str, Any]] = []
-    try:
-        resposta_api = requests.post(RAG_API_URL, json={"query": alvo_limpo, "top_k": TOP_K}, timeout=30)
-        resposta_api.raise_for_status()
-        documentos = resposta_api.json().get("results", [])
-    except Exception as e:
-        print(f"[ERRO] Falha ao comunicar com a API RAG: {e}")
+    vistos: set[tuple[str, str]] = set()
+    for alvo in alvos:
+        try:
+            resposta_api = requests.post(RAG_API_URL, json={"query": alvo, "top_k": TOP_K}, timeout=30)
+            resposta_api.raise_for_status()
+            for doc in resposta_api.json().get("results", []):
+                chave = (doc.get("metadata", {}).get("source_file", ""), doc.get("text", ""))
+                if chave not in vistos:
+                    vistos.add(chave)
+                    documentos.append(doc)
+        except Exception as e:
+            print(f"[ERRO] Falha ao comunicar com a API RAG para '{alvo}': {e}")
+
+    documentos = documentos[:TOP_K]
 
     # Step 3: Assemble consolidated context
     textos_para_llm: list[str] = []
@@ -172,6 +189,17 @@ def chat_endpoint(request: ChatRequest) -> StreamingResponse:
         gerador_streaming(request.pergunta), 
         media_type="text/plain"
     )
+
+# The RAG API is not exposed outside the Docker network: retrieval queries from
+# outside (e.g. the evaluation script) go through here.
+@app.post("/query", summary="Proxy a retrieval query to the RAG API.")
+def query_endpoint(request: QueryRequest) -> dict[str, Any]:
+    try:
+        resposta_api = requests.post(RAG_API_URL, json=request.model_dump(), timeout=30)
+        resposta_api.raise_for_status()
+    except requests.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"RAG API indisponível: {e}")
+    return resposta_api.json()
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8002)

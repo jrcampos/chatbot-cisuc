@@ -31,6 +31,7 @@ TOP_K: int = int(os.environ["RAG_TOP_K"])
 
 # Models Configuration
 LLM_PROVIDER: str = os.environ["LLM_PROVIDER"].lower()
+LLM_TEMPERATURE: float = float(os.environ["LLM_TEMPERATURE"])
 print(f"[INFO] A configurar Modelos no Orchestrator (Provider: {LLM_PROVIDER.upper()})...")
 
 SLM_MODEL: str = os.environ["MODEL_SLM"]
@@ -39,14 +40,14 @@ LLM_MODEL: str = os.environ["MODEL_CHAT"]
 if LLM_PROVIDER == "openai":
     # --- OPENAI ---
     slm_extrator: ChatOpenAI = ChatOpenAI(model=SLM_MODEL, temperature=0.0)
-    llm_principal: ChatOpenAI = ChatOpenAI(model=LLM_MODEL, temperature=0.2)
+    llm_principal: ChatOpenAI = ChatOpenAI(model=LLM_MODEL, temperature=LLM_TEMPERATURE)
 
 else:
     # --- OLLAMA ---
     OLLAMA_URL: str = os.environ["OLLAMA_URL"]
     
     slm_extrator: ChatOllama = ChatOllama(base_url=OLLAMA_URL, model=SLM_MODEL, temperature=0.0, truncate=False)
-    llm_principal: ChatOllama = ChatOllama(base_url=OLLAMA_URL, model=LLM_MODEL, temperature=0.5, truncate=False)
+    llm_principal: ChatOllama = ChatOllama(base_url=OLLAMA_URL, model=LLM_MODEL, temperature=LLM_TEMPERATURE, truncate=False)
 
 print(f"       -> Extrator (Rápido): {SLM_MODEL}")
 print(f"       -> Gerador (Pesado): {LLM_MODEL}")

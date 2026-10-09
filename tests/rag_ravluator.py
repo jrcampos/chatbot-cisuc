@@ -12,7 +12,6 @@ import json
 from pathlib import Path
 import requests
 import pandas as pd
-from dotenv import load_dotenv
 from datasets import Dataset
 from ragas import evaluate
 from ragas.run_config import RunConfig
@@ -27,25 +26,12 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 SCRIPT_DIR = Path(__file__).resolve().parent
 BASE_DIR = SCRIPT_DIR.parent
 
-# Carregar variáveis de ambiente a partir de secrets/evaluation.env
-def carregar_env(caminho: Path) -> None:
-    if not caminho.exists():
-        return
-    for linha in caminho.read_text(encoding="utf-8").splitlines():
-        linha = linha.strip()
-        if not linha or linha.startswith("#") or "=" not in linha:
-            continue
-        chave, _, valor = linha.partition("=")
-        os.environ.setdefault(chave.strip(), valor.strip())
-
-carregar_env(BASE_DIR / "secrets" / "evaluation.env")
-
 # Configurações de API
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL_EVALUATOR = os.getenv("OPENAI_MODEL_EVALUATOR", "gpt-5.4")
-OPENAI_MODEL_EMBEDDINGS = os.getenv("OPENAI_MODEL_EMBEDDINGS", "text-embedding-3-small")
-RAG_API_URL = os.getenv("RAG_API_URL", "http://127.0.0.1:8002/query")  # via orquestrador (RAG não exposto)
-ORCHESTRATOR_API_URL = os.getenv("ORCHESTRATOR_API_URL", "http://127.0.0.1:8002/chat")
+OPENAI_MODEL_EVALUATOR = os.environ["OPENAI_MODEL_EVALUATOR"]
+OPENAI_MODEL_EMBEDDINGS = os.environ["OPENAI_MODEL_EMBEDDINGS"]
+RAG_API_URL = os.environ["RAG_API_URL"]  # via orquestrador (RAG não exposto)
+ORCHESTRATOR_API_URL = os.environ["ORCHESTRATOR_API_URL"]
 
 # Ficheiros de Estado (tests/qa_generation/output/, já gitignored)
 QA_GENERATION_OUTPUT_DIR = SCRIPT_DIR / "qa_generation" / "output"

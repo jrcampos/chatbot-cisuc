@@ -77,29 +77,23 @@ def fase_2_executar_rag_local():
         pergunta = item["question"]
         print(f"[{i}/{len(qa_pairs)}] ({item.get('topico', 'Geral')} - {item['dificuldade']}): {pergunta[:60]}...")
         
-        # 1. Obter os Chunks (Contexts)
-        contexts = []
+        # Resposta e contextos vêm da mesma chamada ao pipeline de produção
+        alvos, contexts, answer, erro = [], [], "", None
         try:
-            resp_rag = requests.post(RAG_API_URL, json={"query": pergunta, "top_k": 5}, timeout=10)
-            if resp_rag.status_code == 200:
-                contexts = [c.get("text") for c in resp_rag.json().get("results", [])]
+            resp = requests.post(ORCHESTRATOR_AVALIACAO_URL, json={"pergunta": pergunta}, timeout=ORCHESTRATOR_TIMEOUT)
+            resp.raise_for_status()
+            dados_resp = resp.json()
+            alvos, contexts, answer = dados_resp["alvos"], dados_resp["contexts"], dados_resp["response"].strip()
         except Exception as e:
-            print(f"   [AVISO RAG] {e}")
-
-        # 2. Obter a Resposta do LLM (Answer)
-        answer = ""
-        try:
-            with requests.post(ORCHESTRATOR_API_URL, json={"pergunta": pergunta}, stream=True, timeout=60) as r:
-                for chunk in r.iter_content(chunk_size=None, decode_unicode=True):
-                    if chunk:
-                        answer += chunk
-        except Exception as e:
-             answer = f"[ERRO NO ORQUESTRADOR]: {e}"
+            erro = str(e)
+            print(f"   [ERRO ORQUESTRADOR] {e}")
 
         ragas_dataset.append({
             "question": pergunta,
-            "answer": answer.strip(),
+            "answer": answer,
             "contexts": contexts,
+            "alvos": alvos,
+            "erro": erro,
             "ground_truth": item["ground_truth"],
             "dificuldade": item["dificuldade"],
             "topico": item.get("topico", "N/A")
@@ -118,7 +112,16 @@ def fase_3_avaliar_com_ragas():
         return
 
     with open(TEST_DATASET_FILE, "r", encoding="utf-8") as f:
-        dados = json.load(f)
+        dados_todos = json.load(f)
+
+    # Perguntas sem resposta do orquestrador (timeout, erro HTTP) não são avaliáveis
+    dados = [d for d in dados_todos if not d.get("erro")]
+    print(f"A excluir {len(dados_todos) - len(dados)} perguntas com erro do orquestrador.")
+
+    # Para depuração: RAGAS_LIMITE=20 avalia só as primeiras N perguntas
+    limite = int(os.getenv("RAGAS_LIMITE", "0"))
+    if limite:
+        dados = dados[:limite]
 
     dados_formatados = {
         "question": [d["question"] for d in dados],
@@ -131,6 +134,9 @@ def fase_3_avaliar_com_ragas():
 
     print(f"A analisar {len(dados)} perguntas... (Isto consome tokens OpenAI)")
     
+    caminho_logs_txt, caminho_logs_juiz = ativar_logs_juiz()
+    print(f"Logs do juiz: {caminho_logs_juiz} e {caminho_logs_txt}")
+
     try:
         resultado = evaluate(
             dataset=dataset_hf,
@@ -149,10 +155,12 @@ def fase_3_avaliar_com_ragas():
         print(resultado)
         
         df = resultado.to_pandas()
-        
+        resumir_juiz(caminho_logs_juiz, df)
+
         # Juntar a Dificuldade e Tópico no CSV final
         df['dificuldade'] = [d.get("dificuldade", "N/A") for d in dados]
         df['topico'] = [d.get("topico", "N/A") for d in dados]
+        df['alvos'] = [" | ".join(d.get("alvos", [])) for d in dados]
         
         df.to_csv(RESULTS_CSV, index=False)
         print(f"\n✅ Relatório detalhado guardado em: {RESULTS_CSV}")

@@ -12,6 +12,7 @@ from typing import Any
 
 from ..crawlers.web_crawler import WebCrawler
 from ..crawlers.utils.data_retriever import DataRetriever
+from ..extractors.content_extractor import strip_corpus_boilerplate
 from ..extractors.utils import Logger
 
 from preprocessing.paths import resolve_raw_path
@@ -109,6 +110,9 @@ class StaticContentSource:
 
             # Start crawling
             self.crawler.crawl()
+
+            # Strip site-wide nav/menu/footer boilerplate that leaked into pages
+            strip_corpus_boilerplate(self.output_dir)
 
             Logger.log_success("Static content fetching completed successfully")
             return True

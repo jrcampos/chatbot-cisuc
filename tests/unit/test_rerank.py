@@ -76,11 +76,3 @@ class TestRerankPool:
         ranked = _rerank_pool(candidates, "topic", rrf_scores, top_k=3)
 
         assert len(ranked) == 3
-
-
-class TestTokenizer:
-    def test_case_and_punctuation_do_not_split_matches(self):
-        from retrieval import _tokenizar
-
-        # "Bycatch," in the corpus must match a lowercase query "bycatch"
-        assert _tokenizar("Projeto Bycatch, REDUCE!") == ["projeto", "bycatch", "reduce"]

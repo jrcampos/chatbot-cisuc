@@ -13,8 +13,8 @@ stages:
       size: 152
     - path: preprocessing
       hash: md5
-      md5: 2bd256e68192a0446bb6d848539d5e3d.dir
-      size: 224365
+      md5: 5f677c483af4f60403a91ec4fde4dd72.dir
+      size: 224403
       nfiles: 36
     - path: scripts/run-enhancement.sh
       hash: md5
@@ -34,11 +34,11 @@ stages:
     outs:
     - path: .local/enriched
       hash: md5
-      md5: 6c8139cffb0e9eaa2a858a8c9179dcf5.dir
-      size: 5665016
+      md5: 25828a6c1b59dd0e7fc5146aa02e8fc0.dir
+      size: 5696758
       nfiles: 9
     - path: .local/raw
       hash: md5
-      md5: 4c9697a25a0d5cde523c6549b940e7b8.dir
-      size: 70735250
-      nfiles: 81
+      md5: 72909fd7c07e9ae21da60b83a844ec51.dir
+      size: 71065787
+      nfiles: 83

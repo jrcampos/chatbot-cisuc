@@ -31,6 +31,7 @@ TOP_K: int = int(os.environ["RAG_TOP_K"])
 
 # Models Configuration
 LLM_PROVIDER: str = os.environ["LLM_PROVIDER"].lower()
+LLM_TEMPERATURE: float = float(os.environ["LLM_TEMPERATURE"])
 print(f"[INFO] A configurar Modelos no Orchestrator (Provider: {LLM_PROVIDER.upper()})...")
 
 SLM_MODEL: str = os.environ["MODEL_SLM"]
@@ -39,14 +40,14 @@ LLM_MODEL: str = os.environ["MODEL_CHAT"]
 if LLM_PROVIDER == "openai":
     # --- OPENAI ---
     slm_extrator: ChatOpenAI = ChatOpenAI(model=SLM_MODEL, temperature=0.0)
-    llm_principal: ChatOpenAI = ChatOpenAI(model=LLM_MODEL, temperature=0.2)
+    llm_principal: ChatOpenAI = ChatOpenAI(model=LLM_MODEL, temperature=LLM_TEMPERATURE)
 
 else:
     # --- OLLAMA ---
     OLLAMA_URL: str = os.environ["OLLAMA_URL"]
     
     slm_extrator: ChatOllama = ChatOllama(base_url=OLLAMA_URL, model=SLM_MODEL, temperature=0.0, truncate=False)
-    llm_principal: ChatOllama = ChatOllama(base_url=OLLAMA_URL, model=LLM_MODEL, temperature=0.5, truncate=False)
+    llm_principal: ChatOllama = ChatOllama(base_url=OLLAMA_URL, model=LLM_MODEL, temperature=LLM_TEMPERATURE, truncate=False)
 
 print(f"       -> Extrator (Rápido): {SLM_MODEL}")
 print(f"       -> Gerador (Pesado): {LLM_MODEL}")
@@ -103,7 +104,6 @@ prompt_extracao = ChatPromptTemplate.from_messages([
                 "REGRA 2: Se não houver nome próprio, devolve os 3 conceitos mais importantes, preferencialmente traduzidos para INGLÊS.\n"
                 "REGRA 3: Se a pergunta referenciar MAIS DE UMA entidade nomeada (ex: uma pessoa E um projeto, ou um grupo E um projeto), "
                 "devolve cada entidade separadamente, separadas por ' | ' (ex: 'João Silva | Projeto XPTO').\n"
-                "REGRA 4: NUNCA inventes entidades nem placeholders (ex: 'Projeto 1', 'Investigador'). Usa apenas nomes que aparecem literalmente na pergunta; se não houver nenhum, devolve os conceitos da REGRA 2.\n"
                 "Devolve APENAS o texto de pesquisa, sem aspas, sem pontuação extra e sem explicações."),
     ("human", "{pergunta}")
 ])
@@ -190,7 +190,39 @@ def gerador_streaming(pergunta_utilizador: str) -> Generator[str, Any, None]:
     _, documentos = recuperar_contexto(pergunta_utilizador)
     contexto_final = formatar_contexto(documentos)
 
-    # Stream the final response (Com o LLM Pesado)
+    print(f"\n[DEBUG] Alvo fixado pelo SLM: '{alvo_limpo}' (Demorou: {time.time() - tempo_extracao_start:.2f}s)")
+
+    # Step 2: Retrieve relevant content via RAG API (one call per entity when
+    # the SLM split a cross-entity question via REGRA 3, else a single call as before)
+    alvos = [a.strip() for a in alvo_limpo.split("|") if a.strip()] or [alvo_limpo]
+    print(f"[DEBUG] A pedir informações à API RAG para {len(alvos)} alvo(s): {alvos}")
+
+    documentos: list[dict[str, Any]] = []
+    vistos: set[tuple[str, str]] = set()
+    for alvo in alvos:
+        try:
+            resposta_api = requests.post(RAG_API_URL, json={"query": alvo, "top_k": TOP_K}, timeout=30)
+            resposta_api.raise_for_status()
+            for doc in resposta_api.json().get("results", []):
+                chave = (doc.get("metadata", {}).get("source_file", ""), doc.get("text", ""))
+                if chave not in vistos:
+                    vistos.add(chave)
+                    documentos.append(doc)
+        except Exception as e:
+            print(f"[ERRO] Falha ao comunicar com a API RAG para '{alvo}': {e}")
+
+    documentos = documentos[:TOP_K]
+
+    # Step 3: Assemble consolidated context
+    textos_para_llm: list[str] = []
+    for i, doc in enumerate(documentos, 1):
+        ficheiro = doc['metadata'].get('source_file', 'N/A')
+        print(f"   [DOC {i}] Ficheiro: {ficheiro[:50]}...")
+        textos_para_llm.append(doc['text'])
+
+    contexto_final = "\n\n".join(textos_para_llm)
+
+    # Step 4: Stream the final response (Com o LLM Pesado)
     print(f"[DEBUG] A gerar resposta final (Stream iniciado)...")
 
     for chunk in gerador_resposta.stream({"context": contexto_final, "input": pergunta_utilizador}):
@@ -204,18 +236,6 @@ def chat_endpoint(request: ChatRequest) -> StreamingResponse:
         gerador_streaming(request.pergunta),
         media_type="text/plain"
     )
-
-# Same pipeline as /chat, non-streamed, and it also returns the chunks the LLM saw.
-# Used by the RAGAS evaluation so contexts and answer come from one production run.
-@app.post("/chat/avaliacao", summary="Answer plus the exact contexts used (for evaluation).")
-def chat_avaliacao_endpoint(request: ChatRequest) -> dict[str, Any]:
-    alvos, documentos = recuperar_contexto(request.pergunta)
-    resposta = gerador_resposta.invoke({"context": formatar_contexto(documentos), "input": request.pergunta})
-    return {
-        "alvos": alvos,
-        "contexts": [doc["text"] for doc in documentos],
-        "response": resposta,
-    }
 
 # The RAG API is not exposed outside the Docker network: retrieval queries from
 # outside (e.g. the evaluation script) go through here.

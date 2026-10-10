@@ -201,7 +201,7 @@ langsmith==0.10.10
     # via langchain-core
 latex2mathml==3.81.0
     # via docling-core
-lxml==4.9.4
+lxml==6.1.0
     # via
     #   -r requirements.in
     #   doclang
@@ -427,7 +427,7 @@ python-dateutil==2.8.2
     #   pandas
 python-docx==1.2.0
     # via docling-slim
-python-dotenv==1.0.0
+python-dotenv==1.2.2
     # via
     #   -r requirements.in
     #   docling-slim

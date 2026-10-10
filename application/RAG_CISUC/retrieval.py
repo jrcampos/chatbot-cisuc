@@ -144,8 +144,8 @@ def _rerank_pool(
     if not candidates:
         return []
 
-    tokenized_query = _tokenizar(query)
-    tokenized_docs = [_tokenizar(doc.page_content) for doc in candidates]
+    tokenized_query = query.lower().split()
+    tokenized_docs = [doc.page_content.lower().split() for doc in candidates]
     bm25_scores = list(BM25Okapi(tokenized_docs).get_scores(tokenized_query))
     rrf_values = [rrf_scores.get(_rrf_key(doc), 0.0) for doc in candidates]
 

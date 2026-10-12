@@ -31,7 +31,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL_EVALUATOR = os.environ["OPENAI_MODEL_EVALUATOR"]
 OPENAI_MODEL_EMBEDDINGS = os.environ["OPENAI_MODEL_EMBEDDINGS"]
 RAG_API_URL = os.environ["RAG_API_URL"]  # via orquestrador (RAG não exposto)
-ORCHESTRATOR_API_URL = os.environ["ORCHESTRATOR_API_URL"]
+ORCHESTRATOR_AVALIACAO_URL = os.environ["ORCHESTRATOR_AVALIACAO_URL"]
+ORCHESTRATOR_TIMEOUT = int(os.environ["ORCHESTRATOR_TIMEOUT"])
 
 # Ficheiros de Estado (tests/qa_generation/output/, já gitignored)
 QA_GENERATION_OUTPUT_DIR = SCRIPT_DIR / "qa_generation" / "output"

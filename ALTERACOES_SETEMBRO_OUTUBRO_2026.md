@@ -13,7 +13,7 @@
 | **Ingestão / pré-processamento** | Filtro de boilerplate (menus e rodapés repetidos); extração de texto com separadores; relações grupo ↔ projeto nos Markdown enriquecidos | Menus colados ao conteúdo e falta de ligação entre grupos e projetos |
 | **RAG (`retrieval.py`)** | Tokenizador único e case-insensitive para BM25; chave de deduplicação por ficheiro + texto; rerank lexical sobre um pool após RRF | BM25 não apanhava "Bycatch," vs "bycatch"; chunks certos ficavam fora do top-k |
 | **Orquestrador** | Extração de múltiplas entidades (REGRA 3) e proibição de inventar placeholders (REGRA 4); pesquisa com a pergunta completa + palavras-chave, intercaladas; prompt de resposta mais direto; endpoint `/chat/avaliacao`; proxy `/query` | Perguntas com duas entidades falhavam; respostas com recusas em conteúdo existente; avaliação usava outro caminho |
-| **Infraestrutura** | Timeouts de 300 s no nginx de desenvolvimento; porta 8002 publicada para a avaliação | Perguntas longas davam timeout em 60 s; avaliação precisa de acesso direto ao orquestrador |
+| **Infraestrutura** | Timeouts de 300 s no nginx de desenvolvimento; proxy `/chat/avaliacao` para a avaliação passar pela porta 80 | Perguntas longas davam timeout em 60 s; avaliação deixou de precisar de acesso direto à porta 8002 do orquestrador |
 | **Avaliação (`tests/rag_ravluator.py`)** | Fase 2 pelo caminho de produção; logs do juiz (JSONL + log do RAGAS); exclusão de erros; coluna `alvos`; URLs e modelos por variável de ambiente | Contextos avaliados não eram os usados em produção; NaN sem explicação |
 
 **Resultado (ver `tests/qa_generation/output/ragas_evaluation_report_2026-10-06.md`):** recusas no Estratégico desceram de 68% para 40%. Os scores subiram, mas a comparação não isola o efeito de cada alteração (a Fase 2 mudou de caminho e de número de contextos).
@@ -145,12 +145,11 @@ Agora o prompt diz:
 - **Alteração:** `proxy_read_timeout 300s` e `proxy_send_timeout 300s` na rota `/chat`.
 - **Porquê:** perguntas complexas ultrapassavam o timeout de 60 s e ficavam sem resposta. Depois desta alteração, os timeouts da avaliação caíram de 49 para 4.
 
-### 5.2 Porta 8002 e proxy de desenvolvimento (não commitado)
+### 5.2 Proxy `/chat/avaliacao` no nginx de desenvolvimento
 
-- **Ficheiro:** `application/docker-compose.nginx.yaml`.
-- **Situação:** o proxy `development_proxy` serve a GUI e `/chat` na porta 80. O orquestrador mantém a porta 8002 publicada, através de `${ORCHESTRATOR_HOST_PORT}:8002`.
-- **Porquê:** a avaliação chama `http://127.0.0.1:8002/chat/avaliacao` diretamente. Sem a porta publicada, a Fase 2 falhava com `Connection refused`.
-- **Atenção:** a variável `ORCHESTRATOR_HOST_PORT` é obrigatória (o compose falha se não estiver definida).
+- **Ficheiro:** `application/development-nginx.conf`.
+- **Situação:** o proxy `development_proxy` serve a GUI, `/chat` e `/chat/avaliacao` na porta 80. O orquestrador já não publica a porta 8002 no host (`application/docker-compose.nginx.yaml` volta a usar `ports: !reset []`, igual ao `gui`).
+- **Porquê:** a avaliação (`ORCHESTRATOR_AVALIACAO_URL`) passou a chamar `http://127.0.0.1/chat/avaliacao`, através do proxy, em vez de bater direto em `http://127.0.0.1:8002/chat/avaliacao`. Deixou de ser preciso expor a porta 8002 no host só para a Fase 2 da avaliação.
 
 ---
 

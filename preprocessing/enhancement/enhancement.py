@@ -60,7 +60,7 @@ def generate_short_description(entity_type: str, text_content: str) -> str:
     if not text_content or len(text_content.strip()) < 10:
         return "Insufficient information to generate description."
 
-    prompt = f"Summarize the following information about a {entity_type} in a maximum of 2 to 3 concise sentences:\n\n{text_content}"
+    prompt = f"Summarize the following information about a {entity_type} in at most 2 to 3 concise sentences (fewer if the input is short). Base the summary strictly on the information given; do not add details that are not present:\n\n{text_content}"
 
     max_retries = 3
     for attempt in range(max_retries):
@@ -68,10 +68,10 @@ def generate_short_description(entity_type: str, text_content: str) -> str:
             response = client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[
-                    {"role": "system", "content": "You are an assistant specialized in summarizing academic profiles and research groups for RAG systems. Be direct and factual."},
+                    {"role": "system", "content": "You are an assistant specialized in summarizing academic profiles and research groups for RAG systems. Only use information explicitly present in the text you are given. Never invent names, affiliations, research areas, or specializations that are not stated in the input. If the input does not contain enough information, say so plainly instead of guessing. Be direct and factual."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.3
+                temperature=0.0
             )
             choice = response.choices[0]
             if choice.message.content:
@@ -105,7 +105,7 @@ def generate_research_focus(titulos_publicacoes: list[str]) -> str:
 
     titulos_texto = "\n- ".join(titulos_publicacoes[:20])
 
-    prompt = f"Based on the following publication titles authored by a researcher, write a single concise sentence summarizing their main areas of scientific expertise and research focus:\n\n- {titulos_texto}"
+    prompt = f"Based only on the topics mentioned in the following publication titles (ignore author names, co-author initials, journal/conference venue names, and years), write a single concise sentence summarizing the researcher's main areas of scientific expertise and research focus. Do not state anything that is not supported by these titles:\n\n- {titulos_texto}"
 
     max_retries = 3
     for attempt in range(max_retries):
@@ -113,10 +113,10 @@ def generate_research_focus(titulos_publicacoes: list[str]) -> str:
             response = client.chat.completions.create(
                 model=OPENAI_MODEL,
                 messages=[
-                    {"role": "system", "content": "You are a scientific assistant analyzing academic publications."},
+                    {"role": "system", "content": "You are a scientific assistant analyzing academic publications. Infer research focus only from the actual topics named in the publication titles. Ignore author names, venues, volume/page numbers, and years — they are not evidence of a research topic. Do not generalize beyond what the titles describe, and do not invent sub-fields or specializations that are not reflected in them."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.3
+                temperature=0.0
             )
             choice = response.choices[0]
             if choice.message.content:
@@ -125,9 +125,10 @@ def generate_research_focus(titulos_publicacoes: list[str]) -> str:
         except Exception as e:
             if "429" in str(e) or "rate limit" in str(e).lower():
                 espera = 2 ** attempt
+                print(f"Rate limit atingido. A esperar {espera} segundos antes de tentar novamente...")
                 time.sleep(espera)
             else:
-                return "Error analyzing research focus."
+                print(f"Erro na API da OpenAI: {e}")
                 raise
 
     raise RuntimeError(
@@ -201,7 +202,7 @@ def process_groups(group_files_paths: list[str]) -> dict[str, dict[str, str]]:
 
         group_slug = os.path.basename(filepath).replace('.md', '')
         print(f"A gerar resumo para o grupo: {group_slug}...")
-        description = generate_short_description("Artificial Intelligence research group", content)
+        description = generate_short_description("CISUC research group", content)
 
         groups_data[group_slug] = {
             'content': content,
@@ -283,15 +284,22 @@ def process_single_user(user: dict[str, Any],
     """
     nome = user.get('name', 'Unknown')
     user_id = user.get('id', '')
-    bio = user.get('bio', '')
-    interesses = user.get('research_interests', [])
+    bio = (user.get('bio') or '').strip()
+    interesses = user.get('research_interests') or []
 
     # Generate and store aliases
     user['aliases'] = generate_name_aliases(nome)
 
-    contexto_user = f"Bio: {bio}\nInterests: {', '.join(interesses) if interesses else 'None'}"
-    user_desc = generate_short_description("university researcher/student", contexto_user)
-    user['short_description'] = user_desc
+    if not bio and not interesses:
+        user['short_description'] = "No biography or research interests available for this researcher."
+    else:
+        partes = []
+        if bio:
+            partes.append(f"Bio: {bio}")
+        if interesses:
+            partes.append(f"Interests: {', '.join(interesses)}")
+        contexto_user = "\n".join(partes)
+        user['short_description'] = generate_short_description("university researcher/student", contexto_user)
 
     pubs_agrupadas = dict_publicacoes.get(user_id, [])
     flat_pubs = get_user_items_flat(pubs_agrupadas)
@@ -480,7 +488,7 @@ def generate_enriched_markdowns(
             f.write(f"**ORCID:** {user.get('orcid', 'N/A')}\n")
             f.write(f"**CV:** {user.get('cv', 'N/A')}\n")
             f.write(f"**Short Description:** {user.get('short_description', 'N/A')}\n")
-            f.write(f"**Research Focus:** {user.get('ai_research_focus', 'N/A')}\n")
+            f.write(f"**Research Focus (inferred from publication titles):** {user.get('ai_research_focus', 'N/A')}\n")
 
             if user.get('laboratories'):
                 for lab in user.get('laboratories', []):

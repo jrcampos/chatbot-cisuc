@@ -13,7 +13,8 @@ import json
 import os
 import time
 import pandas as pd
-from openai import OpenAI
+from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
@@ -26,21 +27,28 @@ from preprocessing.paths import (
     ensure_workspace_directories,
 )
 
-OPENAI_MODEL = os.environ["ENHANCEMENT_MODEL"]
+ENHANCEMENT_MODEL = os.environ["ENHANCEMENT_MODEL"]
+ENHANCEMENT_TEMPERATURE = 0.0
 
 MAX_WORKERS = int(
     os.environ["ENHANCEMENT_MAX_WORKERS"]
 )
 
-api_key = os.environ["OPENAI_API_KEY"]
-
-if not api_key:
-    raise RuntimeError("OPENAI_API_KEY is not set")
+LLM_PROVIDER = os.environ["LLM_PROVIDER"].strip().lower()
 
 # ---------------------------------------------------------
 # Initial Configuration
 # ---------------------------------------------------------
-client = OpenAI(api_key=api_key)
+if LLM_PROVIDER == "openai":
+    openai_api_key = os.environ["OPENAI_API_KEY"]
+    if not openai_api_key:
+        raise RuntimeError("OPENAI_API_KEY não está definida, mas LLM_PROVIDER=openai.")
+    llm_cliente = ChatOpenAI(model=ENHANCEMENT_MODEL, temperature=ENHANCEMENT_TEMPERATURE, api_key=openai_api_key)
+elif LLM_PROVIDER == "ollama":
+    ollama_url = os.environ["OLLAMA_URL"]
+    llm_cliente = ChatOllama(base_url=ollama_url, model=ENHANCEMENT_MODEL, temperature=ENHANCEMENT_TEMPERATURE, truncate=False)
+else:
+    raise ValueError(f"LLM_PROVIDER inválido: {LLM_PROVIDER!r}. Valores suportados: 'openai' ou 'ollama'.")
 
 # ---------------------------------------------------------
 # OpenAI Interaction Functions
@@ -65,17 +73,12 @@ def generate_short_description(entity_type: str, text_content: str) -> str:
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            response = client.chat.completions.create(
-                model=OPENAI_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are an assistant specialized in summarizing academic profiles and research groups for RAG systems. Only use information explicitly present in the text you are given. Never invent names, affiliations, research areas, or specializations that are not stated in the input. If the input does not contain enough information, say so plainly instead of guessing. Be direct and factual."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.0
-            )
-            choice = response.choices[0]
-            if choice.message.content:
-                return choice.message.content.strip()
+            response = llm_cliente.invoke([
+                ("system", "You are an assistant specialized in summarizing academic profiles and research groups for RAG systems. Only use information explicitly present in the text you are given. Never invent names, affiliations, research areas, or specializations that are not stated in the input. If the input does not contain enough information, say so plainly instead of guessing. Be direct and factual."),
+                ("user", prompt)
+            ])
+            if response.content:
+                return response.content.strip()
             return "Empty response from API."
         except Exception as e:
             if "429" in str(e) or "rate limit" in str(e).lower():
@@ -83,11 +86,11 @@ def generate_short_description(entity_type: str, text_content: str) -> str:
                 print(f"Rate limit atingido. A esperar {espera} segundos antes de tentar novamente...")
                 time.sleep(espera)
             else:
-                print(f"Erro na API da OpenAI: {e}")
+                print(f"Erro na API do LLM: {e}")
                 raise
 
     raise RuntimeError(
-        "OpenAI API request failed after maximum retries"
+        "LLM request failed after maximum retries"
     )
 
 def generate_research_focus(titulos_publicacoes: list[str]) -> str:
@@ -110,17 +113,12 @@ def generate_research_focus(titulos_publicacoes: list[str]) -> str:
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            response = client.chat.completions.create(
-                model=OPENAI_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are a scientific assistant analyzing academic publications. Infer research focus only from the actual topics named in the publication titles. Ignore author names, venues, volume/page numbers, and years — they are not evidence of a research topic. Do not generalize beyond what the titles describe, and do not invent sub-fields or specializations that are not reflected in them."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.0
-            )
-            choice = response.choices[0]
-            if choice.message.content:
-                return choice.message.content.strip()
+            response = llm_cliente.invoke([
+                ("system", "You are a scientific assistant analyzing academic publications. Infer research focus only from the actual topics named in the publication titles. Ignore author names, venues, volume/page numbers, and years — they are not evidence of a research topic. Do not generalize beyond what the titles describe, and do not invent sub-fields or specializations that are not reflected in them."),
+                ("user", prompt)
+            ])
+            if response.content:
+                return response.content.strip()
             return "Empty response from API."
         except Exception as e:
             if "429" in str(e) or "rate limit" in str(e).lower():
@@ -128,7 +126,7 @@ def generate_research_focus(titulos_publicacoes: list[str]) -> str:
                 print(f"Rate limit atingido. A esperar {espera} segundos antes de tentar novamente...")
                 time.sleep(espera)
             else:
-                print(f"Erro na API da OpenAI: {e}")
+                print(f"Erro na API do LLM: {e}")
                 raise
 
     raise RuntimeError(

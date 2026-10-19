@@ -9,6 +9,10 @@ Este script implementa a avaliação formal usando a framework Ragas:
 
 import os
 import json
+import argparse
+import logging
+import time
+from datetime import datetime
 from pathlib import Path
 import requests
 import pandas as pd
@@ -22,14 +26,19 @@ from ragas.metrics import (
     context_recall
 )
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_ollama import ChatOllama, OllamaEmbeddings
+from langchain_core.callbacks import BaseCallbackHandler
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 BASE_DIR = SCRIPT_DIR.parent
 
 # Configurações de API
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL_EVALUATOR = os.environ["OPENAI_MODEL_EVALUATOR"]
-OPENAI_MODEL_EMBEDDINGS = os.environ["OPENAI_MODEL_EMBEDDINGS"]
+LLM_PROVIDER = os.environ["LLM_PROVIDER"].strip().lower()
+MODEL_EVALUATOR = os.environ["MODEL_EVALUATOR"]
+MODEL_EMBEDDINGS_EVALUATOR = os.environ["MODEL_EMBEDDINGS_EVALUATOR"]
+EVALUATOR_TEMPERATURE = float(os.environ["EVALUATOR_TEMPERATURE"])
+RAGAS_TIMEOUT = int(os.environ["RAGAS_TIMEOUT"])
+RAGAS_MAX_WORKERS = int(os.environ["RAGAS_MAX_WORKERS"])
 RAG_API_URL = os.environ["RAG_API_URL"]  # via orquestrador (RAG não exposto)
 ORCHESTRATOR_AVALIACAO_URL = os.environ["ORCHESTRATOR_AVALIACAO_URL"]
 ORCHESTRATOR_TIMEOUT = int(os.environ["ORCHESTRATOR_TIMEOUT"])
@@ -39,13 +48,83 @@ QA_GENERATION_OUTPUT_DIR = SCRIPT_DIR / "qa_generation" / "output"
 GROUND_TRUTH_FILE = QA_GENERATION_OUTPUT_DIR / "ragas_ground_truth.json"
 TEST_DATASET_FILE = QA_GENERATION_OUTPUT_DIR / "ragas_test_dataset.json"
 RESULTS_CSV = QA_GENERATION_OUTPUT_DIR / "ragas_evaluation_results.csv"
+LOGS_DIR = QA_GENERATION_OUTPUT_DIR / "logs"
+METRICAS = ["context_precision", "context_recall", "faithfulness", "answer_relevancy"]
 
-if not OPENAI_API_KEY:
-    print("[ERRO] OPENAI_API_KEY não encontrada em secrets/evaluation.env!")
-    exit()
+if LLM_PROVIDER == "openai":
+    openai_api_key = os.environ["OPENAI_API_KEY"]
+    if not openai_api_key:
+        print("[ERRO] OPENAI_API_KEY não encontrada em secrets/evaluation.env!")
+        exit()
+    juiz_llm = ChatOpenAI(model=MODEL_EVALUATOR, temperature=EVALUATOR_TEMPERATURE, api_key=openai_api_key)
+    juiz_embeddings = OpenAIEmbeddings(model=MODEL_EMBEDDINGS_EVALUATOR, api_key=openai_api_key)
+elif LLM_PROVIDER == "ollama":
+    ollama_url = os.environ["OLLAMA_URL"]
+    juiz_llm = ChatOllama(base_url=ollama_url, model=MODEL_EVALUATOR, temperature=EVALUATOR_TEMPERATURE, truncate=False)
+    juiz_embeddings = OllamaEmbeddings(base_url=ollama_url, model=MODEL_EMBEDDINGS_EVALUATOR)
+else:
+    raise ValueError(f"LLM_PROVIDER inválido: {LLM_PROVIDER!r}. Valores suportados: 'openai' ou 'ollama'.")
 
-juiz_llm = ChatOpenAI(model=OPENAI_MODEL_EVALUATOR, temperature=0.2, api_key=OPENAI_API_KEY)
-juiz_embeddings = OpenAIEmbeddings(model=OPENAI_MODEL_EMBEDDINGS, api_key=OPENAI_API_KEY)
+
+class RegistoChamadasJuiz(BaseCallbackHandler):
+    """Grava uma linha JSON por chamada ao juiz: saída bruta (ou erro), para ver porque é que o RAGAS devolve NaN."""
+
+    def __init__(self, caminho: Path):
+        self.caminho = caminho
+        self._inicio: dict = {}
+
+    def _escrever(self, registo: dict) -> None:
+        with self.caminho.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(registo, ensure_ascii=False) + "\n")
+
+    def on_chat_model_start(self, serialized, messages, *, run_id, **kwargs):
+        self._inicio[str(run_id)] = time.time()
+
+    def on_llm_end(self, response, *, run_id, **kwargs):
+        geracoes = response.generations[0] if response.generations else []
+        self._escrever({
+            "run_id": str(run_id),
+            "seg": round(time.time() - self._inicio.pop(str(run_id), time.time()), 2),
+            "estado": "ok",
+            "saida": geracoes[0].text if geracoes else "",
+        })
+
+    def on_llm_error(self, error, *, run_id, **kwargs):
+        self._escrever({
+            "run_id": str(run_id),
+            "seg": round(time.time() - self._inicio.pop(str(run_id), time.time()), 2),
+            "estado": "erro",
+            "erro": f"{type(error).__name__}: {error}",
+        })
+
+
+def ativar_logs_juiz() -> tuple[Path, Path]:
+    """Logs da execução: texto do logger 'ragas' (erros de Job com tipo e mensagem) e JSONL das chamadas ao juiz."""
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    carimbo = datetime.now().strftime("%Y%m%d_%H%M%S")
+    caminho_txt = LOGS_DIR / f"ragas_{carimbo}.log"
+    caminho_jsonl = LOGS_DIR / f"juiz_{carimbo}.jsonl"
+
+    handler = logging.FileHandler(caminho_txt, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    logger_ragas = logging.getLogger("ragas")
+    logger_ragas.setLevel(logging.INFO)
+    logger_ragas.addHandler(handler)
+
+    juiz_llm.callbacks = [RegistoChamadasJuiz(caminho_jsonl)]
+    return caminho_txt, caminho_jsonl
+
+
+def resumir_juiz(caminho_jsonl: Path, df) -> None:
+    """Resumo no terminal: falhas do juiz por tipo e linhas NaN por métrica."""
+    registos = [json.loads(l) for l in caminho_jsonl.read_text(encoding="utf-8").splitlines() if l.strip()]
+    erros = [r for r in registos if r["estado"] == "erro"]
+    print(f"\nChamadas ao juiz: {len(registos)} (erros: {len(erros)})")
+    for r in erros[:5]:
+        print(f"   erro: {r['erro'][:200]}")
+    print("Linhas NaN por métrica:")
+    for m in METRICAS:
+        print(f"   {m}: {int(df[m].isna().sum())}")
 
 
 def fase_2_executar_rag_local():
@@ -135,7 +214,7 @@ def fase_3_avaliar_com_ragas():
             ],
             llm=juiz_llm,
             embeddings=juiz_embeddings,
-            run_config=RunConfig(timeout=300, max_workers=8)
+            run_config=RunConfig(timeout=RAGAS_TIMEOUT, max_workers=RAGAS_MAX_WORKERS)
         )
         
         print("\n=== PONTUAÇÃO GLOBAL (RAGAS SCORE) ===")
@@ -158,15 +237,17 @@ def fase_3_avaliar_com_ragas():
 
 
 if __name__ == "__main__":
-    print("MENU DE AVALIAÇÃO RAGAS (ALTO VOLUME):")
-    print("1. Recolher Respostas e Contextos Locais (Ollama) - Corre após alterar/repopular a DB")
-    print("2. Executar Avaliação Ragas e Gerar Relatório CSV")
+    parser = argparse.ArgumentParser(description="Avaliação RAGAS do RAG (alto volume).")
+    parser.add_argument(
+        "--fase",
+        type=int,
+        choices=[2, 3],
+        required=True,
+        help="2: recolhe respostas/contextos via orquestrador (Ollama). 3: avalia com RAGAS e gera o CSV.",
+    )
+    args = parser.parse_args()
 
-    escolha = input("\nEscolhe uma opção (1/2): ")
-
-    if escolha == "1":
+    if args.fase == 2:
         fase_2_executar_rag_local()
-    elif escolha == "2":
-        fase_3_avaliar_com_ragas()
     else:
-        print("Opção inválida.")
+        fase_3_avaliar_com_ragas()

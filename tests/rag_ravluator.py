@@ -11,19 +11,24 @@ import os
 import json
 import argparse
 import logging
+import random
+import tempfile
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 import requests
 import pandas as pd
 from datasets import Dataset
 from ragas import evaluate
+from ragas.cache import DiskCacheBackend
+from ragas.llms.base import LangchainLLMWrapper
 from ragas.run_config import RunConfig
 from ragas.metrics import (
+    AnswerRelevancy,
+    LLMContextPrecisionWithReference,
     faithfulness,
-    answer_relevancy,
-    context_precision,
-    context_recall
+    context_recall,
 )
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_ollama import ChatOllama, OllamaEmbeddings
@@ -39,6 +44,10 @@ MODEL_EMBEDDINGS_EVALUATOR = os.environ["MODEL_EMBEDDINGS_EVALUATOR"]
 EVALUATOR_TEMPERATURE = float(os.environ["EVALUATOR_TEMPERATURE"])
 RAGAS_TIMEOUT = int(os.environ["RAGAS_TIMEOUT"])
 RAGAS_MAX_WORKERS = int(os.environ["RAGAS_MAX_WORKERS"])
+
+RAGAS_MAX_RETRIES = int(os.getenv("RAGAS_MAX_RETRIES", "3"))
+CONTEXT_PRECISION_TOP_K = int(os.getenv("CONTEXT_PRECISION_TOP_K", "5"))
+ANSWER_RELEVANCY_STRICTNESS = int(os.getenv("ANSWER_RELEVANCY_STRICTNESS", "3"))
 RAG_API_URL = os.environ["RAG_API_URL"]  # via orquestrador (RAG não exposto)
 ORCHESTRATOR_AVALIACAO_URL = os.environ["ORCHESTRATOR_AVALIACAO_URL"]
 ORCHESTRATOR_TIMEOUT = int(os.environ["ORCHESTRATOR_TIMEOUT"])
@@ -49,7 +58,12 @@ GROUND_TRUTH_FILE = QA_GENERATION_OUTPUT_DIR / "ragas_ground_truth.json"
 TEST_DATASET_FILE = QA_GENERATION_OUTPUT_DIR / "ragas_test_dataset.json"
 RESULTS_CSV = QA_GENERATION_OUTPUT_DIR / "ragas_evaluation_results.csv"
 LOGS_DIR = QA_GENERATION_OUTPUT_DIR / "logs"
-METRICAS = ["context_precision", "context_recall", "faithfulness", "answer_relevancy"]
+JUIZ_CACHE_DIR = Path(tempfile.gettempdir()) / "chatbot-cisuc-ragas-cache-juiz"
+
+# "context_precision_topk": renomeada de propósito - avalia só os
+# CONTEXT_PRECISION_TOP_K contextos melhor rankeados, não os 15 do RAG_TOP_K de
+# produção, por isso não é comparável a corridas antigas da métrica original.
+METRICAS = ["context_precision_topk", "context_recall", "faithfulness", "answer_relevancy"]
 
 if LLM_PROVIDER == "openai":
     openai_api_key = os.environ["OPENAI_API_KEY"]
@@ -64,6 +78,43 @@ elif LLM_PROVIDER == "ollama":
     juiz_embeddings = OllamaEmbeddings(base_url=ollama_url, model=MODEL_EMBEDDINGS_EVALUATOR)
 else:
     raise ValueError(f"LLM_PROVIDER inválido: {LLM_PROVIDER!r}. Valores suportados: 'openai' ou 'ollama'.")
+
+# RunConfig único, partilhado entre o wrapper do LLM e o evaluate():
+# max_retries explícito em vez do default do Ragas
+# (10) - as falhas de parsing do juiz local são deterministicas, repetir até
+# 10x só desperdiça chamadas sem salvar a linha.
+JUIZ_RUN_CONFIG = RunConfig(timeout=RAGAS_TIMEOUT, max_workers=RAGAS_MAX_WORKERS, max_retries=RAGAS_MAX_RETRIES)
+
+# Cache de disco do próprio Ragas: chamadas idênticas (mesma pergunta+contexto+
+# resposta) em reexecuções não são repetidas. Único item do plano sem nenhuma
+# contrapartida de qualidade - só evita refazer trabalho já feito.
+juiz_llm_ragas = LangchainLLMWrapper(
+    langchain_llm=juiz_llm,
+    run_config=JUIZ_RUN_CONFIG,
+    cache=DiskCacheBackend(cache_dir=str(JUIZ_CACHE_DIR)),
+)
+
+@dataclass
+class ContextPrecisionTopK(LLMContextPrecisionWithReference):
+    """context_precision avaliado só nos `top_k` contextos mais bem rankeados
+    (a ordem já vem por relevância do round-robin do Orchestrator, ver
+    intercalar_resultados). Não altera o RAG_TOP_K=15 de produção nem os
+    contextos vistos por faithfulness/context_recall - corta apenas o maior
+    item de custo do juiz (uma chamada ao juiz por contexto). Isto muda o
+    valor computado (precision@top_k, não comparável a corridas antigas da
+    métrica original), por isso tem nome próprio em vez de reusar
+    'context_precision'."""
+
+    name: str = "context_precision_topk"
+    top_k: int = CONTEXT_PRECISION_TOP_K
+
+    def _get_row_attributes(self, row):
+        user_input, retrieved_contexts, reference = super()._get_row_attributes(row)
+        return user_input, retrieved_contexts[: self.top_k], reference
+
+
+context_precision_topk = ContextPrecisionTopK()
+answer_relevancy_cfg = AnswerRelevancy(strictness=ANSWER_RELEVANCY_STRICTNESS)
 
 
 class RegistoChamadasJuiz(BaseCallbackHandler):
@@ -170,6 +221,27 @@ def fase_2_executar_rag_local():
     print(f"[OK] Respostas recolhidas! Dataset pronto para o Ragas em {TEST_DATASET_FILE}")
 
 
+def amostra_estratificada(dados: list[dict], tamanho: int, seed: int = 42) -> list[dict]:
+    """Amostra proporcional por 'topico', seed fixa. Substitui o corte cru
+    `dados[:tamanho]`: o ground truth está ordenado por categoria, então
+    RAGAS_LIMITE=20 avaliava só a primeira categoria (Grupos), não uma amostra
+    representativa. Usada só nas corridas de depuração/iteração - a corrida
+    oficial (sem RAGAS_LIMITE) continua a avaliar as 508 linhas completas."""
+    if tamanho >= len(dados):
+        return dados
+    rng = random.Random(seed)
+    por_topico: dict[str, list[dict]] = {}
+    for d in dados:
+        por_topico.setdefault(d.get("topico", "N/A"), []).append(d)
+    proporcao = tamanho / len(dados)
+    amostra = []
+    for grupo in por_topico.values():
+        n = min(len(grupo), max(1, round(len(grupo) * proporcao)))
+        amostra.extend(rng.sample(grupo, n))
+    rng.shuffle(amostra)
+    return amostra[:tamanho]
+
+
 def fase_3_avaliar_com_ragas():
     print("\n--- FASE 3: AVALIAÇÃO RAGAS (LLM AS A JUDGE) ---")
     
@@ -184,10 +256,11 @@ def fase_3_avaliar_com_ragas():
     dados = [d for d in dados_todos if not d.get("erro")]
     print(f"A excluir {len(dados_todos) - len(dados)} perguntas com erro do orquestrador.")
 
-    # Para depuração: RAGAS_LIMITE=20 avalia só as primeiras N perguntas
+    # Para depuração: RAGAS_LIMITE=20 avalia uma amostra estratificada por
+    # tópico de N perguntas (seed fixa) em vez das 508 completas
     limite = int(os.getenv("RAGAS_LIMITE", "0"))
     if limite:
-        dados = dados[:limite]
+        dados = amostra_estratificada(dados, limite)
 
     dados_formatados = {
         "question": [d["question"] for d in dados],
@@ -198,7 +271,7 @@ def fase_3_avaliar_com_ragas():
     
     dataset_hf = Dataset.from_dict(dados_formatados)
 
-    print(f"A analisar {len(dados)} perguntas... (Isto consome tokens OpenAI)")
+    print(f"A analisar {len(dados)} perguntas... (juiz: {MODEL_EVALUATOR} via {LLM_PROVIDER})")
     
     caminho_logs_txt, caminho_logs_juiz = ativar_logs_juiz()
     print(f"Logs do juiz: {caminho_logs_juiz} e {caminho_logs_txt}")
@@ -207,14 +280,14 @@ def fase_3_avaliar_com_ragas():
         resultado = evaluate(
             dataset=dataset_hf,
             metrics=[
-                context_precision,
+                context_precision_topk,
                 context_recall,
                 faithfulness,
-                answer_relevancy
+                answer_relevancy_cfg,
             ],
-            llm=juiz_llm,
+            llm=juiz_llm_ragas,
             embeddings=juiz_embeddings,
-            run_config=RunConfig(timeout=RAGAS_TIMEOUT, max_workers=RAGAS_MAX_WORKERS)
+            run_config=JUIZ_RUN_CONFIG,
         )
         
         print("\n=== PONTUAÇÃO GLOBAL (RAGAS SCORE) ===")
@@ -229,7 +302,7 @@ def fase_3_avaliar_com_ragas():
         df['alvos'] = [" | ".join(d.get("alvos", [])) for d in dados]
         
         df.to_csv(RESULTS_CSV, index=False)
-        print(f"\n✅ Relatório detalhado guardado em: {RESULTS_CSV}")
+        print(f"\n Relatório detalhado guardado em: {RESULTS_CSV}")
         print("Podes agrupar a coluna 'topico' no Excel para veres onde o modelo está a falhar mais!")
         
     except Exception as e:

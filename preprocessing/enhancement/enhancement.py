@@ -54,6 +54,12 @@ else:
 # OpenAI Interaction Functions
 # ---------------------------------------------------------
 
+def _is_retryable_error(e: Exception) -> bool:
+    """Rate limits and transient connection drops (e.g. a local Ollama server
+    restarting under load) are worth retrying; anything else is not."""
+    mensagem = str(e).lower()
+    return any(s in mensagem for s in ("429", "rate limit", "disconnected", "connection", "timeout"))
+
 def generate_short_description(entity_type: str, text_content: str) -> str:
     """
     Generate a 2-3 sentence summary for a given entity based on its content.
@@ -81,9 +87,10 @@ def generate_short_description(entity_type: str, text_content: str) -> str:
                 return response.content.strip()
             return "Empty response from API."
         except Exception as e:
-            if "429" in str(e) or "rate limit" in str(e).lower():
+            if _is_retryable_error(e):
                 espera = 2 ** attempt
-                print(f"Rate limit atingido. A esperar {espera} segundos antes de tentar novamente...")
+                print(f"[INFO] Erro recuperável: {e}")
+                print(f"[INFO] A tentar novamente em {espera}s (tentativa {attempt + 1}/{max_retries})...")
                 time.sleep(espera)
             else:
                 print(f"Erro na API do LLM: {e}")
@@ -121,9 +128,10 @@ def generate_research_focus(titulos_publicacoes: list[str]) -> str:
                 return response.content.strip()
             return "Empty response from API."
         except Exception as e:
-            if "429" in str(e) or "rate limit" in str(e).lower():
+            if _is_retryable_error(e):
                 espera = 2 ** attempt
-                print(f"Rate limit atingido. A esperar {espera} segundos antes de tentar novamente...")
+                print(f"[INFO] Erro recuperável: {e}")
+                print(f"[INFO] A tentar novamente em {espera}s (tentativa {attempt + 1}/{max_retries})...")
                 time.sleep(espera)
             else:
                 print(f"Erro na API do LLM: {e}")

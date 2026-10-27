@@ -180,7 +180,8 @@ def resumir_juiz(caminho_jsonl: Path, df) -> None:
 
 def fase_2_executar_rag_local():
     print("\n--- FASE 2: EXECUTAR TESTES NO SISTEMA LOCAL (OLLAMA) ---")
-    
+    print(f"Orquestrador: {ORCHESTRATOR_AVALIACAO_URL}")
+
     if not os.path.exists(GROUND_TRUTH_FILE):
         print(f"[ERRO] {GROUND_TRUTH_FILE} não existe. Corre tests/qa_generation/generate_ground_truth.py primeiro.")
         return
@@ -199,7 +200,14 @@ def fase_2_executar_rag_local():
         try:
             resp = requests.post(ORCHESTRATOR_AVALIACAO_URL, json={"pergunta": pergunta}, timeout=ORCHESTRATOR_TIMEOUT)
             resp.raise_for_status()
-            dados_resp = resp.json()
+            try:
+                dados_resp = resp.json()
+            except ValueError as e:
+                raise RuntimeError(
+                    f"resposta não é JSON válido (status={resp.status_code}, "
+                    f"content-type={resp.headers.get('Content-Type')!r}, elapsed={resp.elapsed}, "
+                    f"body[:200]={resp.text[:200]!r}): {e}"
+                ) from e
             alvos, contexts, answer = dados_resp["alvos"], dados_resp["contexts"], dados_resp["response"].strip()
         except Exception as e:
             erro = str(e)
@@ -218,6 +226,12 @@ def fase_2_executar_rag_local():
 
     with open(TEST_DATASET_FILE, "w", encoding="utf-8") as f:
         json.dump(ragas_dataset, f, indent=4, ensure_ascii=False)
+
+    sucessos = sum(1 for d in ragas_dataset if d["erro"] is None)
+    if qa_pairs and sucessos == 0:
+        print(f"[ERRO] As {len(qa_pairs)} perguntas falharam no Orquestrador — nenhuma resposta coletada. "
+              f"Verifica ORCHESTRATOR_AVALIACAO_URL e se o container orchestrator está saudável.")
+        raise SystemExit(1)
     print(f"[OK] Respostas recolhidas! Dataset pronto para o Ragas em {TEST_DATASET_FILE}")
 
 
@@ -255,6 +269,10 @@ def fase_3_avaliar_com_ragas():
     # Perguntas sem resposta do orquestrador (timeout, erro HTTP) não são avaliáveis
     dados = [d for d in dados_todos if not d.get("erro")]
     print(f"A excluir {len(dados_todos) - len(dados)} perguntas com erro do orquestrador.")
+
+    if not dados:
+        print("[ERRO] Nenhuma pergunta avaliável (todas tiveram erro na Fase 2). A abortar sem chamar o RAGAS.")
+        raise SystemExit(1)
 
     # Para depuração: RAGAS_LIMITE=20 avalia uma amostra estratificada por
     # tópico de N perguntas (seed fixa) em vez das 508 completas

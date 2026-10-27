@@ -48,7 +48,7 @@ echo
 echo "==> A aguardar o Orchestrator ficar pronto em $ORCHESTRATOR_AVALIACAO_URL"
 ESPERA_INICIO=$SECONDS
 TENTATIVAS=0
-until [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 -X POST "$ORCHESTRATOR_AVALIACAO_URL" -H 'Content-Type: application/json' -d '{}' 2>/dev/null || echo 000)" =~ ^(200|422)$ ]]; do
+until [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 -X POST "$ORCHESTRATOR_AVALIACAO_URL" -H 'Content-Type: application/json' -d '{}' 2>/dev/null || echo 000)" == "422" ]]; do
   TENTATIVAS=$((TENTATIVAS + 1))
   echo "   ainda nao (tentativa $TENTATIVAS, $(fmt_dur $((SECONDS - ESPERA_INICIO))) decorridos), a tentar de novo em 5s..."
   sleep 5

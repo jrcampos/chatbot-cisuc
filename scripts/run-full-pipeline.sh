@@ -38,7 +38,7 @@ PIPELINE_INICIO=$SECONDS
 
 run_phase "1/4 Preprocessing (containers, ingestao, enriquecimento, embeddings, finalizacao)" ./scripts/run-full-processing.sh
 
-run_phase "2/4 Aplicacao (build + up)" ./scripts/run-application.sh up-build
+run_phase "2/4 Aplicacao (build + up)" ./scripts/run-application.sh up-build application/docker-compose.nginx.yaml
 
 set -a
 source config/chatbot-common.env

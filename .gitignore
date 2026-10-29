@@ -18,6 +18,12 @@
 !/secrets/*.example
 !/secrets/*.example.*
 !/secrets/.gitkeep
+/secrets.zip
+*.zip
+
+# Ad-hoc docs generated at the repo root (accidentally committed in ae1c3d1)
+/arquitetura_geral.md
+/fluxo_*.md
 
 # Environment files and credentials
 .env

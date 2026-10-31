@@ -40,22 +40,9 @@ import requests
 SCRIPT_DIR = Path(__file__).resolve().parent
 BASE_DIR = SCRIPT_DIR.parent.parent
 
-# Carregar variáveis de ambiente (adaptação: secrets/evaluation.env do layout atual)
-def carregar_env(caminho: Path) -> None:
-    if not caminho.exists():
-        return
-    for linha in caminho.read_text(encoding="utf-8").splitlines():
-        linha = linha.strip()
-        if not linha or linha.startswith("#") or "=" not in linha:
-            continue
-        chave, _, valor = linha.partition("=")
-        os.environ.setdefault(chave.strip(), valor.strip())
-
-carregar_env(BASE_DIR / "secrets" / "evaluation.env")
-
 # Configurações de API
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL_EVALUATOR", "gpt-5.4")
+OPENAI_MODEL = os.environ["OPENAI_MODEL_EVALUATOR"]
 
 # Ficheiros de Estado (caminhos absolutos: não dependem do diretório de onde
 # o script é chamado, e mantêm os outputs dentro de tests/qa_generation/)

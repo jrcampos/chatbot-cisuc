@@ -1,5 +1,6 @@
 import json
 import re
+from collections import Counter
 from pathlib import Path
 from typing import Any
 from datetime import datetime
@@ -112,7 +113,7 @@ class ContentExtractor:
         ]
         
         for p in all_p_tags:
-            text = p.get_text(strip=True)
+            text = p.get_text(separator=' ', strip=True)
             
             # Skip if text is too short
             if not text or len(text) < 20:
@@ -159,7 +160,7 @@ class ContentExtractor:
         # Strategy 4: If still no paragraphs, try extracting from div elements
         if not paragraphs:
             for div in self.soup.find_all('div'):
-                text = div.get_text(strip=True)
+                text = div.get_text(separator=' ', strip=True)
                 
                 # Only include divs with substantial content
                 if not text or len(text) < 100:
@@ -204,7 +205,7 @@ class ContentExtractor:
         headings: list[str] = []
         
         for h in self.soup.find_all(['h2', 'h3', 'h4', 'h5', 'h6']):
-            text = h.get_text(strip=True)
+            text = h.get_text(separator=' ', strip=True)
             if text:
                 # Clean heading if needed
                 if self.clean_text:
@@ -313,6 +314,44 @@ class ContentExtractor:
         return Config.DOMAIN in domain or domain == ''
 
 
+def strip_corpus_boilerplate(static_dir: Path, min_frequency: float = 0.2) -> None:
+    """
+    Remove site-wide chrome (nav/menu/footer) that leaked into extracted paragraphs.
+
+    Rather than hardcoding known navigation strings (fragile, site-specific),
+    this counts how many distinct pages contain each exact line and drops
+    lines that repeat verbatim across more than `min_frequency` of the pages -
+    a generic signal for boilerplate regardless of the site's DOM structure.
+
+    Args:
+        static_dir: Directory containing the already-written `.md` pages.
+        min_frequency: Fraction of files a line must appear in to be dropped.
+    """
+    md_files = list(static_dir.rglob("*.md"))
+    if len(md_files) < 2:
+        return
+
+    file_lines: dict[Path, list[str]] = {}
+    line_doc_counts: Counter[str] = Counter()
+
+    for path in md_files:
+        lines = path.read_text(encoding="utf-8").splitlines()
+        file_lines[path] = lines
+        for line in set(line.strip() for line in lines if line.strip()):
+            line_doc_counts[line] += 1
+
+    threshold = min_frequency * len(md_files)
+    boilerplate = {line for line, count in line_doc_counts.items() if count > threshold}
+
+    if not boilerplate:
+        return
+
+    for path, lines in file_lines.items():
+        cleaned = [line for line in lines if line.strip() not in boilerplate]
+        if cleaned != lines:
+            path.write_text("\n".join(cleaned) + "\n", encoding="utf-8")
+
+
 class FileGenerator:
     """
     Responsible for serializing extracted page content into JSON and Markdown files.
@@ -405,9 +444,6 @@ class FileGenerator:
             markdown += "## Content\n\n"
             for para in content['paragraphs']:
                 for line in para.split('\n'):
-                    # Filter out navigation noise that sometimes slips through
-                    if any(keyword in line for keyword in ["()hide listShow All+", "CentreHistoryGoverning", "CentreResearchPeoplePublicationsProjectsAdvanced"]):
-                        continue
                     if line.strip():
                         markdown += f"{line.strip()}\n\n"
         

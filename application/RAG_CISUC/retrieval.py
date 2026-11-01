@@ -13,9 +13,11 @@ chunks are presented to the LLM.
 from __future__ import annotations
 import chromadb
 from chromadb.api import ClientAPI
+import copy
 import os
 import threading
 import time
+from collections import OrderedDict
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 from langchain_ollama import OllamaEmbeddings
@@ -40,6 +42,8 @@ RRF_WEIGHT_VECTOR: float = float(os.environ["RAG_RRF_WEIGHT_VECTOR"])
 POOL_MULTIPLIER: int = int(os.environ["RAG_POOL_MULTIPLIER"])
 POOL_MIN_SIZE: int = int(os.environ["RAG_POOL_MIN_SIZE"])
 RERANKER_MODEL: str = os.environ["RAG_RERANKER_MODEL"]
+# Max entries in the per-(query, top_k) result cache; 0 disables it.
+QUERY_CACHE_SIZE: int = int(os.environ["RAG_QUERY_CACHE_SIZE"])
 
 # Models Configuration
 LLM_PROVIDER: str = os.environ["LLM_PROVIDER"].lower()
@@ -160,6 +164,35 @@ def _rerank_pool(candidates: list[Document], query: str, top_k: int) -> list[Doc
     return [doc for doc, _ in ranked][:top_k]
 
 
+# LRU cache of final results per (query, top_k). Hand-rolled instead of functools.lru_cache
+# because only COMPLETE results may be cached (retriever errors are swallowed in
+# get_relevant_chunks, and a partial result must never be served again) and callers
+# must get copies. Invalidated only by restart, like the BM25 index built at startup.
+_query_cache: OrderedDict[tuple[str, int], list[dict[str, Any]]] = OrderedDict()
+_query_cache_lock = threading.Lock()
+
+
+def _cache_get(key: tuple[str, int]) -> list[dict[str, Any]] | None:
+    if QUERY_CACHE_SIZE <= 0:
+        return None
+    with _query_cache_lock:
+        hit = _query_cache.get(key)
+        if hit is not None:
+            _query_cache.move_to_end(key)
+    return copy.deepcopy(hit) if hit is not None else None
+
+
+def _cache_put(key: tuple[str, int], resultados: list[dict[str, Any]]) -> None:
+    if QUERY_CACHE_SIZE <= 0:
+        return
+    entry = copy.deepcopy(resultados)
+    with _query_cache_lock:
+        _query_cache[key] = entry
+        _query_cache.move_to_end(key)
+        while len(_query_cache) > QUERY_CACHE_SIZE:
+            _query_cache.popitem(last=False)
+
+
 def get_relevant_chunks(query: str, top_k: int = 15) -> list[dict[str, Any]]:
     """
     Perform a weighted hybrid search using both BM25 and Vector retrievers.
@@ -178,6 +211,14 @@ def get_relevant_chunks(query: str, top_k: int = 15) -> list[dict[str, Any]]:
     # 1. Clean and normalize query
     query = query.replace("'", "").replace('"', "").strip()
     print(f"\n[RAG DEBUG] A procurar a query: '{query}'")
+
+    cache_key = (query, top_k)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        print(f"[RAG DEBUG] cache HIT ({len(cached)} documentos).")
+        return cached
+    # Only a run where every retriever answered without error may be cached.
+    completo = True
     
     # 2. Execute retrievers in parallel (lexical)
     bm25_docs: list[Document] = []
@@ -186,7 +227,10 @@ def get_relevant_chunks(query: str, top_k: int = 15) -> list[dict[str, Any]]:
             bm25_docs = retriever_palavras_chave.invoke(query)
             print(f"[RAG DEBUG] BM25 encontrou: {len(bm25_docs)} docs.")
         except Exception as e:
+            completo = False
             print(f"[ERRO BM25] {e}")
+    else:
+        completo = False
 
     # 3. Execute retrievers in parallel (semantic)
     vector_docs: list[Document] = []
@@ -195,7 +239,10 @@ def get_relevant_chunks(query: str, top_k: int = 15) -> list[dict[str, Any]]:
             vector_docs = retriever_vetorial.invoke(query)
             print(f"[RAG DEBUG] Vetores (Cosseno) encontrou: {len(vector_docs)} docs.")
         except Exception as e:
+            completo = False
             print(f"[ERRO VETORES] {e}")
+    else:
+        completo = False
 
     # 4. Score Fusion (Weighted RRF)
     scores: dict[str, dict[str, Any]] = {}
@@ -232,5 +279,11 @@ def get_relevant_chunks(query: str, top_k: int = 15) -> list[dict[str, Any]]:
             "text": doc.page_content,
             "metadata": getattr(doc, "metadata", {}) or {}
         })
+
+    if completo and resultados:
+        _cache_put(cache_key, resultados)
+        print("[RAG DEBUG] cache MISS (guardado).")
+    else:
+        print("[RAG DEBUG] resultado incompleto ou vazio: não guardado em cache.")
 
     return resultados

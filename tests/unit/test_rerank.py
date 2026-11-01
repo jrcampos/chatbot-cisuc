@@ -11,6 +11,8 @@ import time
 import types
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RAG_CISUC_DIR = REPO_ROOT / "application" / "RAG_CISUC"
 if str(RAG_CISUC_DIR) not in sys.path:
@@ -32,6 +34,7 @@ os.environ.setdefault("RAG_RRF_WEIGHT_BM25", "0.6")
 os.environ.setdefault("RAG_RRF_WEIGHT_VECTOR", "0.4")
 os.environ.setdefault("RAG_POOL_MULTIPLIER", "2")
 os.environ.setdefault("RAG_POOL_MIN_SIZE", "20")
+os.environ.setdefault("RAG_QUERY_CACHE_SIZE", "512")
 
 # sentence_transformers (and torch) are heavy and not in the unit-test env.
 # Stub the module before retrieval is imported so the real model never loads.
@@ -148,3 +151,105 @@ class TestRerankerLock:
             t.join()
 
         assert state["max"] == 1
+
+
+class FakeRetriever:
+    """Stands in for the BM25/vector retrievers: counts calls, optionally raises."""
+
+    def __init__(self, docs=None, error=None):
+        self.docs = docs or []
+        self.error = error
+        self.calls = 0
+
+    def invoke(self, query):
+        self.calls += 1
+        if self.error:
+            raise self.error
+        return list(self.docs)
+
+
+@pytest.fixture
+def engine(monkeypatch):
+    docs = [doc(f"chunk {i}") for i in range(5)]
+    bm25 = FakeRetriever(docs[:3])
+    vector = FakeRetriever(docs[2:])
+    reranker = FakeCrossEncoder({f"chunk {i}": float(i) for i in range(5)})
+    monkeypatch.setattr(retrieval, "retriever_palavras_chave", bm25)
+    monkeypatch.setattr(retrieval, "retriever_vetorial", vector)
+    monkeypatch.setattr(retrieval, "reranker", reranker)
+    monkeypatch.setattr(retrieval, "QUERY_CACHE_SIZE", 8)
+    retrieval._query_cache.clear()
+    yield types.SimpleNamespace(bm25=bm25, vector=vector, reranker=reranker)
+    retrieval._query_cache.clear()
+
+
+class TestQueryCache:
+    def test_repeated_query_is_served_from_cache(self, engine):
+        first = retrieval.get_relevant_chunks("topic", top_k=15)
+        second = retrieval.get_relevant_chunks("topic", top_k=15)
+
+        assert second == first
+        assert engine.bm25.calls == 1
+        assert engine.vector.calls == 1
+        assert len(engine.reranker.seen_pairs) == 1
+
+    def test_retriever_error_result_is_not_cached(self, engine):
+        engine.vector.error = RuntimeError("embedding service down")
+        partial = retrieval.get_relevant_chunks("topic", top_k=15)
+        assert partial  # BM25 alone still answers
+
+        engine.vector.error = None
+        retrieval.get_relevant_chunks("topic", top_k=15)
+
+        assert engine.bm25.calls == 2  # recomputed, the partial result was not reused
+
+    def test_missing_retriever_result_is_not_cached(self, engine, monkeypatch):
+        monkeypatch.setattr(retrieval, "retriever_vetorial", None)
+
+        retrieval.get_relevant_chunks("topic", top_k=15)
+
+        assert len(retrieval._query_cache) == 0
+
+    def test_empty_result_is_not_cached(self, engine):
+        engine.bm25.docs = []
+        engine.vector.docs = []
+
+        assert retrieval.get_relevant_chunks("topic", top_k=15) == []
+        assert len(retrieval._query_cache) == 0
+
+    def test_mutating_a_result_does_not_corrupt_the_cache(self, engine):
+        first = retrieval.get_relevant_chunks("topic", top_k=15)
+        original_text = first[0]["text"]
+        first[0]["text"] = "tampered"
+        first.pop()
+
+        again = retrieval.get_relevant_chunks("topic", top_k=15)
+
+        assert again[0]["text"] == original_text
+        assert len(again) == 5
+
+    def test_size_zero_disables_the_cache(self, engine, monkeypatch):
+        monkeypatch.setattr(retrieval, "QUERY_CACHE_SIZE", 0)
+
+        retrieval.get_relevant_chunks("topic", top_k=15)
+        retrieval.get_relevant_chunks("topic", top_k=15)
+
+        assert engine.bm25.calls == 2
+        assert len(retrieval._query_cache) == 0
+
+    def test_evicts_least_recently_used(self, engine, monkeypatch):
+        monkeypatch.setattr(retrieval, "QUERY_CACHE_SIZE", 2)
+
+        retrieval.get_relevant_chunks("q1", top_k=15)
+        retrieval.get_relevant_chunks("q2", top_k=15)
+        retrieval.get_relevant_chunks("q1", top_k=15)  # q1 is now the most recent
+        retrieval.get_relevant_chunks("q3", top_k=15)  # evicts q2
+
+        assert set(retrieval._query_cache) == {("q1", 15), ("q3", 15)}
+
+    def test_key_distinguishes_top_k_and_case(self, engine):
+        retrieval.get_relevant_chunks("topic", top_k=2)
+        retrieval.get_relevant_chunks("topic", top_k=3)
+        retrieval.get_relevant_chunks("Topic", top_k=3)
+
+        assert engine.bm25.calls == 3

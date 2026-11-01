@@ -9,11 +9,20 @@ services:
     image: ${RAG_IMAGE:?RAG_IMAGE must be defined}
     build:
       context: ./RAG_CISUC
+      args:
+        RAG_RERANKER_MODEL: ${RAG_RERANKER_MODEL:?RAG_RERANKER_MODEL must be defined}
     environment:
       CHROMA_HOST: chromadb
       CHROMA_PORT: "8000"
       RAG_MAX_RETRYS: ${RAG_MAX_RETRYS:?RAG_MAX_RETRYS must be defined}
       RAG_RETRY_DELAY: ${RAG_RETRY_DELAY:?RAG_RETRY_DELAY must be defined}
+      RAG_RERANKER_MODEL: ${RAG_RERANKER_MODEL:?RAG_RERANKER_MODEL must be defined}
+      RAG_RETRIEVER_K_BM25: ${RAG_RETRIEVER_K_BM25:?RAG_RETRIEVER_K_BM25 must be defined}
+      RAG_RETRIEVER_K_VECTOR: ${RAG_RETRIEVER_K_VECTOR:?RAG_RETRIEVER_K_VECTOR must be defined}
+      RAG_RRF_WEIGHT_BM25: ${RAG_RRF_WEIGHT_BM25:?RAG_RRF_WEIGHT_BM25 must be defined}
+      RAG_RRF_WEIGHT_VECTOR: ${RAG_RRF_WEIGHT_VECTOR:?RAG_RRF_WEIGHT_VECTOR must be defined}
+      RAG_POOL_MULTIPLIER: ${RAG_POOL_MULTIPLIER:?RAG_POOL_MULTIPLIER must be defined}
+      RAG_POOL_MIN_SIZE: ${RAG_POOL_MIN_SIZE:?RAG_POOL_MIN_SIZE must be defined}
       LLM_PROVIDER: ${LLM_PROVIDER:?LLM_PROVIDER must be defined}
       MODEL_EMBEDDINGS: ${MODEL_EMBEDDINGS:?MODEL_EMBEDDINGS must be defined}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY must be defined}

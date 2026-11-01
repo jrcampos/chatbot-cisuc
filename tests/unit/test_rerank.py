@@ -6,6 +6,8 @@ The CrossEncoder is faked: the real model is never downloaded in unit tests.
 
 import os
 import sys
+import threading
+import time
 import types
 from pathlib import Path
 
@@ -118,3 +120,31 @@ class TestRerankPool:
         assert fake.seen_pairs == [
             [("my question", "chunk A"), ("my question", "chunk B")]
         ]
+
+
+class TestRerankerLock:
+    def test_concurrent_predicts_never_overlap(self, monkeypatch):
+        state = {"active": 0, "max": 0}
+        guard = threading.Lock()
+
+        class SlowReranker:
+            def predict(self, pairs):
+                with guard:
+                    state["active"] += 1
+                    state["max"] = max(state["max"], state["active"])
+                time.sleep(0.05)
+                with guard:
+                    state["active"] -= 1
+                return [0.0] * len(pairs)
+
+        monkeypatch.setattr(retrieval, "reranker", SlowReranker())
+        threads = [
+            threading.Thread(target=_rerank_pool, args=([doc("a")], "q", 1))
+            for _ in range(4)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert state["max"] == 1

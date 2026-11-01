@@ -4,6 +4,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Unbuffered stdout so [INFO]/[RAG DEBUG] lines show up in `docker logs` immediately.
+ENV PYTHONUNBUFFERED=1
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -16,7 +19,6 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
     && pip install --no-cache-dir -r requirements.txt
 
 # Bake the reranker weights into the image at build time (no network at runtime).
-# Placed before COPY . . so code edits do not re-download the model.
 ARG RAG_RERANKER_MODEL
 ENV HF_HOME=/app/.hf_cache
 RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('${RAG_RERANKER_MODEL}')"

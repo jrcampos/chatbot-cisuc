@@ -7,12 +7,17 @@ natural language queries, serving as the data source for the Orchestrator.
 """
 from __future__ import annotations
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import Any, AsyncGenerator
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+import retrieval
 from retrieval import get_relevant_chunks
+
+# True only after the cross-encoder and the retrievers were exercised successfully.
+# Served by /health, which the container healthcheck (and so the Orchestrator start) waits on.
+ready: bool = False
 
 # ---------------------------------------------------------
 # API Lifecycle (RAG Engine Pre-warming)
@@ -23,19 +28,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     Manages the RAG API lifecycle, performing essential warm-up operations.
 
-    Triggers the initial loading of embeddings into VRAM and the construction 
-    of the BM25 index to ensure immediate responsiveness upon the first request.
+    Runs one real inference on the cross-encoder and one full retrieval so the first
+    user request does not pay for it, and only then reports the service as ready.
     """
+    global ready
     print("[INFO] A pré-aquecer o Motor Híbrido do RAG...")
     try:
-        # Perform a dummy retrieval to initialize indices and model weights
+        # Direct inference: exercises the reranker even if the database is empty
+        print("[INFO] A aquecer o reranker (cross-encoder)...")
+        retrieval.reranker.predict([("warmup", "warmup")])
+        # Full retrieval: initialises the indices and the embedding model
         print("[INFO] A carregar modelo de Embeddings e índices. Aguarde...")
         get_relevant_chunks("warmup test", top_k=1)
-        print("[INFO] Vetores e BM25 pré-aquecidos! Motor pronto!")
+        if retrieval.retriever_vetorial is None or retrieval.retriever_palavras_chave is None:
+            raise RuntimeError("ChromaDB/BM25 indisponíveis (ver erros de arranque acima)")
+        ready = True
+        print("[INFO] Reranker, vetores e BM25 pré-aquecidos! Motor pronto!")
     except Exception as e:
-        print(f"[AVISO] Aviso no warm-up do RAG: {e}")
+        print(f"[ERRO] Warm-up do RAG falhou; o serviço NÃO fica pronto (/health devolve 503): {e}")
 
-    yield # API is ready to accept requests
+    yield # API accepts connections; /health tells whether it is actually ready
 
     print("[INFO] A desligar o RAG API...")
 
@@ -82,8 +94,15 @@ def query_docs(request: QueryRequest) -> dict[str, Any]:
         results = get_relevant_chunks(request.query, request.top_k)
         return {"results": results}
     except Exception as e:
+        # Never answer 200 with an empty list on failure: callers would treat it as "no context".
         print(f"[ERRO] Erro ao processar a consulta: {e}")
-        return {"results": [], "error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/health", summary="Readiness: 200 only after the reranker and retrievers are warmed up.")
+def health() -> dict[str, str]:
+    if not ready:
+        raise HTTPException(status_code=503, detail="RAG not ready")
+    return {"status": "ok"}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8001)

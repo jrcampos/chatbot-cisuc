@@ -14,6 +14,7 @@ from __future__ import annotations
 import chromadb
 from chromadb.api import ClientAPI
 import os
+import threading
 import time
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
@@ -143,12 +144,18 @@ def _rrf_key(doc: Document) -> str:
     return f"{doc.metadata.get('source_file', '')}::{doc.page_content}"
 
 
+_reranker_lock = threading.Lock()
+
+
 def _rerank_pool(candidates: list[Document], query: str, top_k: int) -> list[Document]:
     """Score each (query, chunk) pair with the cross-encoder and keep the top_k."""
     if not candidates:
         return []
 
-    scores = reranker.predict([(query, doc.page_content) for doc in candidates])
+    # One predict at a time: the endpoint runs in a threadpool, and concurrent predicts
+    # only fight over the same CPU threads (same total throughput, far worse latency).
+    with _reranker_lock:
+        scores = reranker.predict([(query, doc.page_content) for doc in candidates])
     ranked = sorted(zip(candidates, scores), key=lambda pair: float(pair[1]), reverse=True)
     return [doc for doc, _ in ranked][:top_k]
 
@@ -210,9 +217,13 @@ def get_relevant_chunks(query: str, top_k: int = 15) -> list[dict[str, Any]]:
     pool_size = max(top_k * POOL_MULTIPLIER, POOL_MIN_SIZE)
     pool_docs = [entry["doc"] for entry in sorted_entries[:pool_size]]
 
+    rerank_start = time.time()
     top_docs = _rerank_pool(pool_docs, query, top_k)
 
-    print(f"[RAG DEBUG] RRF + Reranking retornaram: {len(top_docs)} documentos (pool: {len(pool_docs)}).")
+    print(
+        f"[RAG DEBUG] RRF + Reranking retornaram: {len(top_docs)} documentos "
+        f"(pool: {len(pool_docs)}, rerank: {time.time() - rerank_start:.2f}s)."
+    )
 
     # 6. Format results for JSON serialization
     resultados: list[dict[str, Any]] = []

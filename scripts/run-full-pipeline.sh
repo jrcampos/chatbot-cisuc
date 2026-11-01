@@ -4,6 +4,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 export HOST_UID="${HOST_UID:-$(id -u)}" HOST_GID="${HOST_GID:-$(id -g)}"
 
+export PYTHONUNBUFFERED=1
+
 mkdir -p logs
 LOG_FILE="logs/run-full-pipeline_$(date '+%Y%m%d_%H%M%S').log"
 exec > >(tee -a "$LOG_FILE") 2>&1

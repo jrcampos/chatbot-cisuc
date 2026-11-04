@@ -39,15 +39,32 @@ class TestFuse:
         assert rc.fuse([([], 0.6), ([], 0.4)]) == []
 
 
-class TestIdentifierPattern:
+class TestIdentifiers:
     @pytest.mark.parametrize("text,found", [
         ("when does HORIZON-CL4-2027-04-DIGITAL-EMERGING-05 close", ["HORIZON-CL4-2027-04-DIGITAL-EMERGING-05"]),
+        ("Quando fecha o HORIZON-CL4-2027-04-DIGITAL-EMERGING-05?", ["HORIZON-CL4-2027-04-DIGITAL-EMERGING-05"]),
         ("EuropeAid/187686/ID/ACT/MK", ["EuropeAid/187686/ID/ACT/MK"]),
+        ("(HORIZON-MSCA-2027-COFUND-02) and HORIZON-MSCA-2027-COFUND-02", ["HORIZON-MSCA-2027-COFUND-02"]),
         ("quantum computing", []),
+        ("AI-driven robotics", []),            # two parts: not an identifier
+        ("joão-maria-silva", []),              # non-ASCII parts: not an identifier
+        ("a--b-c", []),                        # empty part
         ("state-of-the art", ["state-of-the"]),  # harmless: an exact lookup that finds nothing
     ])
     def test_finds_identifiers(self, text, found):
-        assert rc._IDENTIFIER.findall(text) == found
+        assert rc.identifiers(text) == found
+
+    def test_bounded_number_of_lookups(self):
+        query = " ".join(f"A-B-{i}" for i in range(20))
+        assert len(rc.identifiers(query)) == rc.MAX_IDENTIFIERS
+
+    def test_linear_on_adversarial_input(self):
+        """CodeQL py/polynomial-redos: the old regex took ~33 s on 40k zeros."""
+        import time
+        for attack in ("0" * 400_000, "0-" * 200_000, "a-" * 100_000 + "!" * 100_000):
+            started = time.perf_counter()
+            rc.identifiers(attack)
+            assert time.perf_counter() - started < 0.5
 
 
 def hit(key, title="T"):

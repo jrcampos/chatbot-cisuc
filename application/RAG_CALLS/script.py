@@ -40,7 +40,7 @@ app = FastAPI(
 
 
 class QueryRequest(BaseModel):
-    query: str = Field(..., description="The search string to find relevant calls for.")
+    query: str = Field(..., max_length=1000, description="The search string to find relevant calls for.")
     top_k: int = Field(default=8, ge=1, le=50, description="Number of calls to return.")
 
 

@@ -15,7 +15,6 @@ calls are searched; the read-only login and statement timeout come from the stor
 from __future__ import annotations
 
 import os
-import re
 from collections.abc import Callable
 from typing import Any
 
@@ -53,12 +52,31 @@ def fuse(ranked_lists: list[tuple[list[str], float]]) -> list[str]:
 
 # Call / topic identifiers (HORIZON-CL4-2027-04-DIGITAL-EMERGING-05, EuropeAid/187686/ID/ACT/MK):
 # full-text search splits them into words, so an exact lookup puts the named call first.
-_IDENTIFIER = re.compile(r"[A-Za-z0-9]+(?:[-/][A-Za-z0-9]+){2,}")
+# Parsed with plain string operations, linear in the query length: a regex over the raw query
+# backtracks quadratically on long runs of letters/digits (CodeQL py/polynomial-redos).
+_EDGE_PUNCTUATION = ".,;:!?()[]{}<>\"'«»“”‘’"
+MAX_IDENTIFIER_CHARS = 120
+MAX_IDENTIFIERS = 5
+
+
+def identifiers(query: str) -> list[str]:
+    """Whitespace-separated tokens made of >= 3 ASCII alphanumeric parts joined by '-' or '/'."""
+    found: list[str] = []
+    for raw in query.split():
+        token = raw.strip(_EDGE_PUNCTUATION)
+        if not token or len(token) > MAX_IDENTIFIER_CHARS or token in found:
+            continue
+        parts = token.replace("/", "-").split("-")
+        if len(parts) >= 3 and all(part.isascii() and part.isalnum() for part in parts):
+            found.append(token)
+            if len(found) == MAX_IDENTIFIERS:
+                break
+    return found
 
 
 def _exact(conn: Any, query: str) -> list[str]:
     keys: list[str] = []
-    for token in dict.fromkeys(_IDENTIFIER.findall(query)):
+    for token in identifiers(query):
         for hit in search_calls(conn, CallQuery(identifier=token, limit=CANDIDATES)):
             if hit["natural_key"] not in keys:
                 keys.append(hit["natural_key"])

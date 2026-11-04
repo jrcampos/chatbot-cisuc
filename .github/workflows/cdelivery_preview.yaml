@@ -14,6 +14,7 @@ env:
   RAG_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-rag
   ORCHESTRATOR_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-orchestrator
   GUI_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-gui
+  CALLS_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-calls
 
 jobs:
   deploy:
@@ -26,6 +27,8 @@ jobs:
       COMPOSE_PROJECT_NAME: pr${{ github.event.pull_request.number }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OLLAMA_URL: ${{ secrets.OLLAMA_URL }}
+      EXTSRC_DB_PASSWORD: ${{ secrets.EXTSRC_DB_PASSWORD }}
+      EXTSRC_DB_READER_PASSWORD: ${{ secrets.EXTSRC_DB_READER_PASSWORD }}
 
     steps:
       - name: Check out repository
@@ -43,6 +46,7 @@ jobs:
             echo "RAG_IMAGE=$RAG_REGISTRY_IMAGE:$BUILD_SHA"
             echo "ORCHESTRATOR_IMAGE=$ORCHESTRATOR_REGISTRY_IMAGE:$BUILD_SHA"
             echo "GUI_IMAGE=$GUI_REGISTRY_IMAGE:$BUILD_SHA"
+            echo "CALLS_IMAGE=$CALLS_REGISTRY_IMAGE:$BUILD_SHA"
           } >> "$GITHUB_ENV"
 
       - name: Log in to GitHub Container Registry
@@ -61,6 +65,7 @@ jobs:
           docker pull "$RAG_IMAGE"
           docker pull "$ORCHESTRATOR_IMAGE"
           docker pull "$GUI_IMAGE"
+          docker pull "$CALLS_IMAGE"
 
       - name: Make scripts executable
         run: chmod +x scripts/*.sh
@@ -104,4 +109,5 @@ jobs:
             "$RAG_IMAGE" \
             "$ORCHESTRATOR_IMAGE" \
             "$GUI_IMAGE" \
+            "$CALLS_IMAGE" \
             || true

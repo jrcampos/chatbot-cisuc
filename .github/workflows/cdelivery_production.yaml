@@ -17,6 +17,7 @@ env:
   RAG_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-rag
   ORCHESTRATOR_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-orchestrator
   GUI_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-gui
+  CALLS_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-calls
 
 jobs:
   deploy:
@@ -33,6 +34,8 @@ jobs:
 
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OLLAMA_URL: ${{ secrets.OLLAMA_URL }}
+      EXTSRC_DB_PASSWORD: ${{ secrets.EXTSRC_DB_PASSWORD }}
+      EXTSRC_DB_READER_PASSWORD: ${{ secrets.EXTSRC_DB_READER_PASSWORD }}
 
       GHCR_USERNAME: ${{ github.actor }}
       GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -67,6 +70,8 @@ jobs:
             echo "OPENAI_API_KEY_B64=$(printf '%s' "$OPENAI_API_KEY" | base64 | tr -d '\n')"
             echo "OLLAMA_URL_B64=$(printf '%s' "$OLLAMA_URL" | base64 | tr -d '\n')"
             echo "GHCR_TOKEN_B64=$(printf '%s' "$GHCR_TOKEN" | base64 | tr -d '\n')"
+            echo "EXTSRC_DB_PASSWORD_B64=$(printf '%s' "$EXTSRC_DB_PASSWORD" | base64 | tr -d '\n')"
+            echo "EXTSRC_DB_READER_PASSWORD_B64=$(printf '%s' "$EXTSRC_DB_READER_PASSWORD" | base64 | tr -d '\n')"
           } >> "$GITHUB_ENV"
 
       - name: Deploy production environment
@@ -81,10 +86,13 @@ jobs:
              RAG_REGISTRY_IMAGE='$RAG_REGISTRY_IMAGE' \
              ORCHESTRATOR_REGISTRY_IMAGE='$ORCHESTRATOR_REGISTRY_IMAGE' \
              GUI_REGISTRY_IMAGE='$GUI_REGISTRY_IMAGE' \
+             CALLS_REGISTRY_IMAGE='$CALLS_REGISTRY_IMAGE' \
              GHCR_USERNAME='$GHCR_USERNAME' \
              GHCR_TOKEN_B64='$GHCR_TOKEN_B64' \
              OPENAI_API_KEY_B64='$OPENAI_API_KEY_B64' \
              OLLAMA_URL_B64='$OLLAMA_URL_B64' \
+             EXTSRC_DB_PASSWORD_B64='$EXTSRC_DB_PASSWORD_B64' \
+             EXTSRC_DB_READER_PASSWORD_B64='$EXTSRC_DB_READER_PASSWORD_B64' \
              bash -s" <<'REMOTE_SCRIPT'
           set -euo pipefail
 
@@ -129,11 +137,18 @@ jobs:
           export RAG_IMAGE="${RAG_REGISTRY_IMAGE}:staging"
           export ORCHESTRATOR_IMAGE="${ORCHESTRATOR_REGISTRY_IMAGE}:staging"
           export GUI_IMAGE="${GUI_REGISTRY_IMAGE}:staging"
+          export CALLS_IMAGE="${CALLS_REGISTRY_IMAGE}:staging"
+
+          EXTSRC_DB_PASSWORD="$(printf '%s' "$EXTSRC_DB_PASSWORD_B64" | base64 --decode)"
+          EXTSRC_DB_READER_PASSWORD="$(printf '%s' "$EXTSRC_DB_READER_PASSWORD_B64" | base64 --decode)"
+          export EXTSRC_DB_PASSWORD
+          export EXTSRC_DB_READER_PASSWORD
           
           docker pull "$CHROMADB_FINAL_IMAGE"
           docker pull "$RAG_IMAGE"
           docker pull "$ORCHESTRATOR_IMAGE"
           docker pull "$GUI_IMAGE"
+          docker pull "$CALLS_IMAGE"
 
           export OPENAI_API_KEY
           export OLLAMA_URL
@@ -157,6 +172,7 @@ jobs:
           promote_to_production "$RAG_REGISTRY_IMAGE"
           promote_to_production "$ORCHESTRATOR_REGISTRY_IMAGE"
           promote_to_production "$GUI_REGISTRY_IMAGE"
+          promote_to_production "$CALLS_REGISTRY_IMAGE"
 
           docker image prune -a -f
           REMOTE_SCRIPT

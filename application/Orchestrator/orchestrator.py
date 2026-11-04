@@ -5,13 +5,15 @@ This module implements the primary coordination layer for the RAG system.
 It handles:
 - Model pre-warming during startup (lifespan management).
 - Natural language query normalization and keyword extraction (via Fast SLM).
-- Coordination with the RAG API for document retrieval.
+- Source routing (CISUC knowledge base and/or EU funding calls) from the same SLM call.
+- Coordination with the RAG APIs (RAG_CISUC, RAG_CALLS) for document retrieval.
 - Streaming response generation using Heavy LLM and LangChain.
 """
 from __future__ import annotations
 import os
 import requests
 import time
+from datetime import date
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
@@ -23,11 +25,17 @@ import uvicorn
 from typing import Generator, Any, AsyncGenerator
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_openai import ChatOpenAI
+from routing import CALLS, CISUC, ROUTING_RULE, build_context, calls_key, cisuc_key, parse_targets, retrieve
 
 # ===== Environment Configuration =====
 # RAG Configuration
 RAG_API_URL: str = os.environ["RAG_API_URL"]
 TOP_K: int = int(os.environ["RAG_TOP_K"])
+
+# Funding calls (RAG_CALLS). CALLS_SOURCE=off keeps the CISUC-only behaviour.
+CALLS_ENABLED: bool = os.environ["CALLS_SOURCE"].lower() == "on"
+CALLS_API_URL: str = os.environ["CALLS_API_URL"]
+CALLS_TOP_K: int = int(os.environ["CALLS_TOP_K"])
 
 # Models Configuration
 LLM_PROVIDER: str = os.environ["LLM_PROVIDER"].lower()
@@ -100,10 +108,12 @@ app.add_middleware(
 # 1. Target Extractor: Usamos o SLM Rápido aqui!
 prompt_extracao = ChatPromptTemplate.from_messages([
     ("system", "A tua tarefa é extrair as palavras-chave principais desta pergunta do utilizador para usar num motor de busca.\n"
+                + (ROUTING_RULE if CALLS_ENABLED else "") +
                 "REGRA 1: Se a pergunta contiver um NOME PRÓPRIO (ex: pessoa ou projeto), devolve APENAS esse nome.\n"
                 "REGRA 2: Se não houver nome próprio, devolve os 3 conceitos mais importantes, preferencialmente traduzidos para INGLÊS.\n"
                 "REGRA 3: Se a pergunta referenciar MAIS DE UMA entidade nomeada (ex: uma pessoa E um projeto, ou um grupo E um projeto), "
                 "devolve cada entidade separadamente, separadas por ' | ' (ex: 'João Silva | Projeto XPTO').\n"
+                "REGRA 4: Se a pergunta citar o IDENTIFICADOR de um concurso (ex: HORIZON-CL4-2027-04-DIGITAL-EMERGING-05), devolve-o exatamente.\n"
                 "Devolve APENAS o texto de pesquisa, sem aspas, sem pontuação extra e sem explicações."),
     ("human", "{pergunta}")
 ])
@@ -114,7 +124,11 @@ system_prompt = (
     "You are the official AI Assistant for CISUC (Centre for Informatics and Systems of the University of Coimbra).\n"
     "Your job is to answer questions using ONLY the provided context below.\n"
     "If the context does not contain the answer, politely say 'I'm sorry, but I don't have that information in my current database.' Do NOT hallucinate or invent answers.\n"
-    "Be professional, clear, and helpful. You can answer in Portuguese or English, depending on the language of the prompt.\n\n"
+    "Be professional, clear, and helpful. You can answer in Portuguese or English, depending on the language of the prompt.\n"
+    "Today's date is {today}.\n"
+    "When you mention an EU funding call, give its identifier, status and deadline, and cite the URL from its Sources. "
+    "Only present calls that appear in the context; never invent identifiers, budgets or dates. If sources disagree "
+    "on a value, say so and give the range.\n\n"
     "Context:\n{context}"
 )
 
@@ -137,6 +151,12 @@ class QueryRequest(BaseModel):
 # Main Logic (Streaming)
 # ---------------------------------------------------------
 
+def _post(url: str, query: str, top_k: int) -> list[dict[str, Any]]:
+    resposta_api = requests.post(url, json={"query": query, "top_k": top_k}, timeout=30)
+    resposta_api.raise_for_status()
+    return resposta_api.json().get("results", [])
+
+
 def gerador_streaming(pergunta_utilizador: str) -> Generator[str, Any, None]:
     start_time = time.time()
 
@@ -146,40 +166,31 @@ def gerador_streaming(pergunta_utilizador: str) -> Generator[str, Any, None]:
 
     print(f"\n[DEBUG] Alvo fixado pelo SLM: '{alvo_limpo}' (Demorou: {time.time() - tempo_extracao_start:.2f}s)")
 
-    # Step 2: Retrieve relevant content via RAG API (one call per entity when
-    # the SLM split a cross-entity question via REGRA 3, else a single call as before)
-    alvos = [a.strip() for a in alvo_limpo.split("|") if a.strip()] or [alvo_limpo]
-    print(f"[DEBUG] A pedir informações à API RAG para {len(alvos)} alvo(s): {alvos}")
+    # Step 2: Route and retrieve (one call per target, as before, on each selected service)
+    fontes, alvos = parse_targets(alvo_limpo, CALLS_ENABLED)
+    alvos = alvos or [pergunta_utilizador]
+    print(f"[DEBUG] Fontes: {fontes} | {len(alvos)} alvo(s): {alvos}")
 
     documentos: list[dict[str, Any]] = []
-    vistos: set[tuple[str, str]] = set()
-    for alvo in alvos:
-        try:
-            resposta_api = requests.post(RAG_API_URL, json={"query": alvo, "top_k": TOP_K}, timeout=30)
-            resposta_api.raise_for_status()
-            for doc in resposta_api.json().get("results", []):
-                chave = (doc.get("metadata", {}).get("source_file", ""), doc.get("text", ""))
-                if chave not in vistos:
-                    vistos.add(chave)
-                    documentos.append(doc)
-        except Exception as e:
-            print(f"[ERRO] Falha ao comunicar com a API RAG para '{alvo}': {e}")
+    concursos: list[dict[str, Any]] = []
+    if CISUC in fontes:
+        documentos = retrieve(lambda alvo: _post(RAG_API_URL, alvo, TOP_K), alvos, TOP_K, cisuc_key)
+    if CALLS in fontes:
+        concursos = retrieve(lambda alvo: _post(CALLS_API_URL, alvo, CALLS_TOP_K), alvos, CALLS_TOP_K, calls_key)
 
-    documentos = documentos[:TOP_K]
-
-    # Step 3: Assemble consolidated context
-    textos_para_llm: list[str] = []
     for i, doc in enumerate(documentos, 1):
-        ficheiro = doc['metadata'].get('source_file', 'N/A')
-        print(f"   [DOC {i}] Ficheiro: {ficheiro[:50]}...")
-        textos_para_llm.append(doc['text'])
+        print(f"   [DOC {i}] Ficheiro: {doc['metadata'].get('source_file', 'N/A')[:50]}...")
+    for i, doc in enumerate(concursos, 1):
+        print(f"   [CALL {i}] {doc['metadata'].get('natural_key', 'N/A')}")
 
-    contexto_final = "\n\n".join(textos_para_llm)
+    # Step 3: Assemble consolidated context (one labelled section per source)
+    contexto_final = build_context(documentos, concursos, fontes)
 
     # Step 4: Stream the final response (Com o LLM Pesado)
-    print(f"[DEBUG] A gerar resposta final (Stream iniciado)...")
+    print("[DEBUG] A gerar resposta final (Stream iniciado)...")
 
-    for chunk in gerador_resposta.stream({"context": contexto_final, "input": pergunta_utilizador}):
+    resposta = {"context": contexto_final, "input": pergunta_utilizador, "today": date.today().isoformat()}
+    for chunk in gerador_resposta.stream(resposta):
         yield str(chunk)
 
     print(f"\n[DEBUG] Tempo total de orquestração: {time.time() - start_time:.2f} segundos")

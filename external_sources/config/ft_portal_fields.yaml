@@ -1,0 +1,111 @@
+# Field spec for the EU Funding & Tenders Portal search API.
+# EVERY raw key the API sends is either mapped or explicitly ignored — the plugin
+# records any key not listed here as a `schema_drift` gap (source drift / new fields).
+# Two record families exist in the payload (536 rich "topic" records with
+# budget/description/conditions, 565 leaner "call" records); keys absent from a
+# record are simply "source_absent" for it.
+source: ft_portal
+
+# Imported by load_spec before the steps are validated (registers ft_* transforms).
+transform_modules: [external_sources.plugins.ft_portal_transforms]
+
+anchors:
+  status_map: &status_map
+    mapping:
+      "31094501": forthcoming
+      "31094502": open
+      "31094503": closed
+
+# No `not_applicable` entries: every schema field can be fed for calls.
+
+# Source 'open'/'forthcoming' with a past deadline -> closed (source label is
+# kept in details.source_status).
+finalizers: [derive_status]
+
+fields:
+  # ---- normalized top-level fields ---------------------------------------
+  identifier: [{to: natural_key, parse: [first, strip]}]
+  title: [{to: title, parse: [first, strip]}]
+  # API-path urls (.../data/topicDetails/<ID>) become the browsable topic page.
+  url: [{to: source_url, parse: [first, strip, ft_topic_url]}]
+  status:
+    - {to: status, parse: [first, {map: *status_map}]}
+    - {to: details.source_status, parse: [first, {map: *status_map}]}
+  # deadlineDate may hold several cut-offs: deadline_date is the next upcoming one
+  # (else the latest); every cut-off is kept in details.deadline_dates.
+  deadlineDate:
+    - {to: deadline_date, parse: [ft_pick_deadline, iso_datetime]}
+    - {to: details.deadline_dates, parse: [ft_all_dates]}
+  startDate: [{to: start_date, parse: [first, iso_datetime]}]
+  esDA_IngestDate: [{to: source_updated_at, parse: [first, iso_datetime]}]
+  descriptionByte:
+    - {to: description, parse: [first, html_to_text], may_be_empty: true}
+    - {to: details.description_links, parse: [first, html_links], may_be_empty: true}
+  budgetOverview:
+    - {to: funding_amount, parse: [first, json_in_string, ft_budget_total], may_be_empty: true}
+    - {to: details.budget, parse: [first, json_in_string, ft_budget_summary], may_be_empty: true}
+
+  # ---- prepared extras (details.*) ---------------------------------------
+  callIdentifier: [{to: details.call_identifier, parse: [first, strip]}]
+  callTitle: [{to: details.call_title, parse: [first, strip]}]
+  typesOfAction: [{to: details.types_of_action, parse: [string_list]}]
+  keywords: [{to: details.keywords, parse: [string_list]}]
+  tags: [{to: details.tags, parse: [string_list]}]
+  crossCuttingPriorities: [{to: details.cross_cutting_priorities, parse: [string_list]}]
+  focusArea: [{to: details.focus_area, parse: [string_list]}]
+  deadlineModel: [{to: details.deadline_model, parse: [first, strip]}]
+  programmePeriod: [{to: details.programme_period, parse: [first, strip]}]
+  language: [{to: details.language, parse: [first, strip]}]
+  specificObjective: [{to: details.specific_objective, parse: [first, html_to_text], may_be_empty: true}]
+  allowPartnerSearch: [{to: details.allow_partner_search, parse: [first, boolean]}]
+  supportInfo:
+    - {to: details.support, parse: [first, html_to_text], may_be_empty: true}
+    - {to: details.support_links, parse: [first, html_links], may_be_empty: true}
+  topicConditions:
+    - {to: details.conditions, parse: [first, html_to_text], may_be_empty: true}
+    - {to: details.conditions_links, parse: [first, html_links], may_be_empty: true}
+  sepTemplate: [{to: details.submission_notice, parse: [first, html_to_text], may_be_empty: true}]
+  destinationDescription: [{to: details.destination_description, parse: [first, html_to_text], may_be_empty: true}]
+  destinationDetails:
+    - {to: details.destination_details, parse: [first, html_to_text], may_be_empty: true}
+    - {to: details.destination_links, parse: [first, html_links], may_be_empty: true}
+  latestInfos: [{to: details.latest_updates, parse: [first, json_in_string, ft_latest_infos]}]
+  links: [{to: details.links, parse: [first, json_in_string, deep_clean, ft_links]}]
+  actions: [{to: details.actions, parse: [first, json_in_string, deep_clean, ft_actions]}]
+
+  # Injected by the plugin from the per-call detail endpoint (absent otherwise).
+  detail:
+    - {to: details.publication_date, parse: [{get: {path: publicationDateLong}}, epoch_ms], may_be_empty: true}
+    - {to: details.sme, parse: [{get: {path: sme}}], may_be_empty: true}
+    - {to: details.grant_types, parse: [{get: {path: topicMGAs}}, ft_grant_types], may_be_empty: true}
+
+  # ---- ignored (all of it stays untouched in `raw`) ------------------------
+  frameworkProgramme: {ignore: "programme label comes from the plugin's programme config"}
+  type: {ignore: "always '1' (grants) — the plugin only queries grants"}
+  sortStatus: {ignore: "search-result ordering key"}
+  destination: {ignore: "opaque portal id; the label lives in destinationDescription"}
+  destinationGroup: {ignore: "opaque portal id with no label in the payload"}
+  programmeDivision: {ignore: "list of opaque portal ids with no labels in the payload"}
+  typeOfMGAs: {ignore: "opaque model-grant-agreement ids; readable form is in typesOfAction/actions"}
+  mission: {ignore: "opaque mission id with no label in the payload"}
+  missionGroup: {ignore: "opaque mission-group id with no label in the payload"}
+  ccm2Id: {ignore: "portal-internal record id"}
+  callccm2Id: {ignore: "portal-internal call id"}
+  cftId: {ignore: "portal-internal call-for-tender id"}
+  cenTagsA: {ignore: "opaque taxonomy codes with no labels in the payload"}
+  ccmTags: {ignore: "opaque taxonomy codes with no labels in the payload"}
+  ccmTags2: {ignore: "opaque taxonomy codes with no labels in the payload"}
+  esIN_ccmTags: {ignore: "search-index copy of ccmTags"}
+  esIN_ccmTags2: {ignore: "search-index copy of ccmTags2"}
+  DATASOURCE: {ignore: "search-engine datasource label"}
+  datasource: {ignore: "search-engine datasource label"}
+  REFERENCE: {ignore: "search-engine document reference"}
+  corporate-search-version: {ignore: "search-engine schema version"}
+  es_SortDate: {ignore: "search-engine indexing metadata"}
+  es_ContentType: {ignore: "search-engine indexing metadata"}
+  es_Combine: {ignore: "search-engine indexing metadata"}
+  esST_URL: {ignore: "search-engine indexing metadata"}
+  esST_FileName: {ignore: "search-engine indexing metadata"}
+  esST_checksum: {ignore: "search-engine indexing metadata"}
+  esDA_QueueDate: {ignore: "search-engine indexing metadata"}
+  esDA_FirstIngestDate: {ignore: "search-engine indexing metadata"}

@@ -1,0 +1,9 @@
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+# external_sources (extraction, enrichment, store) — same list as external_sources/requirements.txt
+requests>=2.31.0
+pydantic>=2.0.0
+PyYAML>=6.0
+beautifulsoup4>=4.12.3,<5.0
+lxml>=5.0
+psycopg[binary]>=3.1,<4

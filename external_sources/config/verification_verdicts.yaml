@@ -1,0 +1,90 @@
+# CHECKED verdicts for cross-layer disagreements (dates, budgets). Each entry was decided by reading
+# the official sources (F&T topic page / detail endpoint, the call document, the work programme);
+# nothing here is assumed. An entry applies to the record whose natural_key equals `key`, or matches
+# the regex `key_pattern`, for `field`. It never changes the stored values: it adds the decision and
+# the evidence to details.verification[field] (status becomes `resolved`, or `confirmed` when the
+# check confirmed the stored value).
+#
+#   key | key_pattern   which record(s)
+#   field             verification field name (deadline_date, funding_amount, details.call_budget_eur, ...)
+#   status            resolved | confirmed | conflicting (still open after checking; needs a human)
+#   decision          api | document | both | neither | open   — which layer's value is right
+#   value             the value judged correct (optional when status is conflicting)
+#   sources           [{url, quote?, page?}] — REQUIRED, at least one
+#   checked_at        YYYY-MM-DD — REQUIRED
+#   note              why
+verdicts:
+  - key: EDF-EDIP-USI-2026-LS-IRA-MAB
+    field: funding_amount
+    status: resolved
+    decision: both
+    value: 180000000
+    checked_at: '2026-10-14'
+    note: >-
+      Not a conflict: the call document's total (EUR 184 500 000) includes EUR 180 000 000 from the voted
+      EU budget (footnote 8); the portal API lists the voted-budget part only. Both values are right, at
+      different scopes; the call budget (EUR 184.5M) stays in details.call_budget_eur.
+    sources:
+      - url: https://ec.europa.eu/info/funding-tenders/opportunities/docs/2021-2027/edf/wp-call/2026/call-fiche_edf-edip-usi-2026-ls-ira_en.pdf
+        page: 10
+        quote: "The estimated available call budget is EUR 184 500 000 [8] ... [8] including EUR 180 000 000 from voted EU budget"
+      - url: https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/EDF-EDIP-USI-2026-LS-IRA-MAB
+        quote: "budgetOverview: 2026 = 180000000 (EDF Lump Sum Grants)"
+  - key: EDF-EDIP-USI-2027-LS-IRA-CUXS
+    field: funding_amount
+    status: resolved
+    decision: both
+    value: 80000000
+    checked_at: '2026-10-14'
+    note: >-
+      Not a conflict: the call document's total (EUR 82 000 000) includes EUR 80 000 000 from the voted
+      EU budget (footnote 8); the portal API lists the voted-budget part only.
+    sources:
+      - url: https://ec.europa.eu/info/funding-tenders/opportunities/docs/2021-2027/edf/wp-call/2027/call-fiche_edf-edip-usi-2027-ls-ira_en.pdf
+        quote: "The estimated available call budget is EUR 82 000 000 [8] ... [8] including EUR 80 000 000 from voted EU budget"
+      - url: https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/EDF-EDIP-USI-2027-LS-IRA-CUXS
+        quote: "budgetOverview: 2027 = 80000000 (EDF Lump Sum Grants)"
+  - key_pattern: '^HORIZON-JU-EUROHPC-2026-(NAPT-11|NQKD-12|QEXP-14|SPT-10|TIPT-09|QTI-13)-01$'
+    field: funding_amount
+    status: confirmed
+    decision: api
+    checked_at: '2026-10-14'
+    note: >-
+      The EuroHPC JU Work Programme 2026 (Amendment 3) states only the TOTAL of the six FPA/SGA2 quantum
+      calls (EUR 119 million) and says the call details will be added later; the per-topic split exists only
+      in the portal API. The six API topic budgets (20 + 24 + 15 + 20 + 20 + 20) sum to exactly EUR 119
+      million, so the API values are consistent with the official total. Per-topic amount: single official
+      source (API) by construction.
+    sources:
+      - url: 'https://www.eurohpc-ju.europa.eu/document/download/b759cd90-bacc-4c58-938e-82d6df86b3bd_en?filename=Decision%2022.2026_Amend.%203%20%20to%20Work%20Programme%202026.pdf'
+        page: 23
+        quote: "In 2026, the Commission will transfer the management of the six SGA2 linked to six existing FPAs with a total budget Union contribution of EUR 119 Million from Horizon Europe."
+      - url: 'https://www.eurohpc-ju.europa.eu/document/download/b759cd90-bacc-4c58-938e-82d6df86b3bd_en?filename=Decision%2022.2026_Amend.%203%20%20to%20Work%20Programme%202026.pdf'
+        page: 24
+        quote: "A full call explanation of the process to sign these SGAs will be added to this Work Programme when it is agreed by the Governing Board."
+  - key: HORIZON-JU-EUROHPC-2026-QML-07-01
+    field: funding_amount
+    status: confirmed
+    decision: api
+    value: 6000000
+    checked_at: '2026-10-14'
+    note: The JU work programme's call table gives the topic EUR 6.00 million, equal to the API value.
+    sources:
+      - url: 'https://www.eurohpc-ju.europa.eu/document/download/b759cd90-bacc-4c58-938e-82d6df86b3bd_en?filename=Decision%2022.2026_Amend.%203%20%20to%20Work%20Programme%202026.pdf'
+        page: 32
+        quote: "HORIZON-JU-EUROHPC-2026-QML-07-01: Quantum Machine Learning — Research and Innovation Action (RIA) 6.00 ... Overall indicative budget 6.00"
+  - key: HORIZON-MSCA-2027-SE-01-01
+    field: deadline_date
+    status: conflicting
+    decision: open
+    checked_at: '2026-10-14'
+    note: >-
+      Checked, still open. The portal topic data (forthcoming, opening 2026-12-15) gives 15 April 2027 and
+      has no update notice; the MSCA work programme 2026-2027 (PDF re-published 2026-09-29) gives 13 April
+      2027 in both its call table and its call conditions. Neither source says it supersedes the other;
+      the call opens on 2026-12-15, when the topic page should be re-checked. Show both dates to users.
+    sources:
+      - url: https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/HORIZON-MSCA-2027-SE-01-01
+        quote: "deadlineDates: 2027-04-15 (status Forthcoming, planned opening 2026-12-15)"
+      - url: https://ec.europa.eu/info/funding-tenders/opportunities/docs/2021-2027/horizon/wp-call/2026-2027/wp-2-marie-sklodowska-curie-actions_horizon-2026-2027_en.pdf
+        quote: "HORIZON-MSCA-2027-SE-01 95.15 13 Apr 2027 ... Opening: 15 Dec 2026 Deadline(s): 13 Apr 2027"

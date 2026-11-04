@@ -1,0 +1,72 @@
+# Per-record, per-field VERIFICATION: how many independent layers state the same value, and
+# the resulting verdict. Read by external_sources/verification.py; written to each record as
+# details.verification[field] = {status, value, layers, agreeing, agree_count, sources, basis,
+# note, checked_at}.
+#
+# Layers: api (F&T search API), detail (F&T topic-detail endpoint), document (a call document or
+# work programme the record links, or a work programme of its programme that names its topic id).
+# api and detail come from the same portal backend (the detail payload repeats the search payload),
+# so they count as ONE independent layer ("portal"); a document is the second independent layer.
+#
+# Verdicts:
+#   confirmed      >= 2 independent layers agree, or (kind official_text) an official call
+#                  document states it
+#   single_source  one layer states it and nothing contradicts it
+#   conflicting    layers disagree and no checked verdict resolves it
+#   resolved       layers disagree and a CHECKED verdict (verification_verdicts.yaml, with source URLs
+#                  and quotes) decides; both values stay in `layers`
+#   absent         no layer states it
+#
+# RANGES (rule from Gabriel, 2026-10-15): when sources disagree on a number or a date we never pick one.
+# The verdict carries `range` = {min, max, primary, settled, values: [{value, layer, source, page?}]}
+# and the record gets details.value_range[field] (same shape + status). The status stays `conflicting`
+# unless an official source settles it (an official topic-page update notice, or a CHECKED verdict whose
+# status is `resolved`): then `settled` is true and the settled value is `primary`; every other value
+# stays listed. Context packs and the validation report show the range and cite every value's source.
+#
+# Kinds:
+#   numeric        amounts; agreement within `tolerance` (merge_extractions keeps agreeing document
+#                  values in details.corroboration; disagreements are discrepancy gaps)
+#   date           calendar date in Europe/Brussels (a time-of-day difference is NOT a conflict, it is
+#                  reported in `note`); `all_dates` lists every cut-off, any one may match;
+#                  `update_notices` (see deadline_date) can resolve a conflict with an official notice
+#   numeric note:  a topic funding_amount equal to the call budget stated by the call document is
+#                  confirmed at CALL level (`level: call_total`): the API repeats the call total
+#   text_presence  the (normalised) value appears in a document the record used
+#   text_overlap   at least `min_hits` of up to `probes` sentences (>= probe_min_chars) of the value
+#                  appear in a document the record used
+#   official_text  confirmed when the call document supplied the text (`document`); single_source when
+#                  only the API text (`api`) exists
+#   programme      confirmed when a used document belongs to the programme (URL marker below)
+tolerance: 0.01
+independent_groups: {api: portal, detail: portal, document: document}
+fields:
+  title: {kind: text_presence}
+  description: {kind: text_overlap, probes: 5, probe_min_chars: 60, probe_max_chars: 120, min_hits: 2}
+  funding_amount: {kind: numeric}
+  details.topic_budget_eur: {kind: numeric}
+  details.call_budget_eur: {kind: numeric}
+  deadline_date:
+    kind: date
+    all_dates: details.deadline_dates
+    document: details.document_deadline
+    # A conflict is RESOLVED for the API when an official topic-page update (latest_updates) newer than
+    # the document mentions "deadline" and one of the API dates (day + month): the document predates it.
+    update_notices: details.latest_updates
+    notice_pattern: '(?i)deadline'
+  start_date: {kind: date, document: details.document_opening_date}
+  programme: {kind: programme}
+  eligibility:                # call fiche 'Eligibility' section, else the Horizon WP topic's 'Specific conditions'
+    kind: official_text
+    api: details.conditions
+    document: [details.document_eligibility, details.document_specific_conditions]
+programme_markers:
+  default: '/docs/2021-2027/{key}/'          # F&T-hosted documents live under the programme's key
+  extra:                                      # documents hosted by agencies / joint undertakings
+    horizon: ['eic\.ec\.europa\.eu', 'eurohpc-ju\.europa\.eu', 'chips-ju\.europa\.eu', 'ihi\.europa\.eu',
+              'cbe\.europa\.eu', 'global-health-edctp3\.europa\.eu', 'eit\.europa\.eu', '/docs/2021-2027/euratom/']
+    edf: ['/docs/2021-2027/edip/']
+    digital: ['cybersecurity-centre\.europa\.eu', 'chips-ju\.europa\.eu']
+    erasmus: ['erasmus-plus\.ec\.europa\.eu']
+    euba: ['efsa\.europa\.eu']
+verdicts_file: verification_verdicts.yaml

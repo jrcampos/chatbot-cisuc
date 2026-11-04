@@ -13,6 +13,7 @@ env:
   RAG_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-rag
   ORCHESTRATOR_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-orchestrator
   GUI_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-gui
+  CALLS_REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/cisuc-calls
 
 jobs:
   application:
@@ -22,6 +23,8 @@ jobs:
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OLLAMA_URL: ${{ secrets.OLLAMA_URL }}
+      EXTSRC_DB_PASSWORD: ${{ secrets.EXTSRC_DB_PASSWORD }}
+      EXTSRC_DB_READER_PASSWORD: ${{ secrets.EXTSRC_DB_READER_PASSWORD }}
 
     steps:
       - name: Check out commit
@@ -53,6 +56,7 @@ jobs:
             echo "RAG_IMAGE=$RAG_IMAGE"
             echo "ORCHESTRATOR_IMAGE=$ORCHESTRATOR_IMAGE"
             echo "GUI_IMAGE=$GUI_IMAGE"
+            echo "CALLS_IMAGE=$CALLS_IMAGE"
             echo "CHROMADB_FINAL_IMAGE=$CHROMADB_REGISTRY_IMAGE:${{ github.sha }}"
           } >> "$GITHUB_ENV"
 
@@ -99,6 +103,10 @@ jobs:
             "$GUI_IMAGE" \
             "$GUI_REGISTRY_IMAGE:$BUILD_SHA"
 
+          docker tag \
+            "$CALLS_IMAGE" \
+            "$CALLS_REGISTRY_IMAGE:$BUILD_SHA"
+
       - name: Push application images
         shell: bash
         env:
@@ -109,3 +117,4 @@ jobs:
           docker push "$RAG_REGISTRY_IMAGE:$BUILD_SHA"
           docker push "$ORCHESTRATOR_REGISTRY_IMAGE:$BUILD_SHA"
           docker push "$GUI_REGISTRY_IMAGE:$BUILD_SHA"
+          docker push "$CALLS_REGISTRY_IMAGE:$BUILD_SHA"

@@ -1,0 +1,92 @@
+# EU Funding & Tenders Portal programme IDs.
+# Source: the portal's own internal `frameworkProgramme` facet values,
+# extracted from the pipeworx-io/mcp-eu-funding-tenders client (MIT-licensed,
+# https://github.com/pipeworx-io/mcp-eu-funding-tenders) and independently
+# verified live against the real API during research (2026-09).
+#
+# This file is what makes the ft_portal plugin institution/config-driven
+# rather than hardcoded — add or remove a programme here, not in the plugin.
+programmes:
+  horizon:
+    id: "43108390"
+    label: "Horizon Europe"
+  h2020:
+    id: "31045243"
+    label: "Horizon 2020"
+  life:
+    id: "43252405"
+    label: "LIFE"
+  erasmus:
+    id: "43353764"
+    label: "Erasmus+"
+  crea:
+    id: "43251814"
+    label: "Creative Europe"
+  digital:
+    id: "43152860"
+    label: "Digital Europe Programme"
+  cef:
+    id: "43251567"
+    label: "Connecting Europe Facility"
+  eu4h:
+    id: "43332642"
+    label: "EU4Health"
+  cerv:
+    id: "43251589"
+    label: "Citizens, Equality, Rights and Values"
+  amif:
+    id: "43251447"
+    label: "Asylum, Migration and Integration Fund"
+  isf:
+    id: "43252368"
+    label: "Internal Security Fund"
+  smp:
+    id: "43252476"
+    label: "Single Market Programme"
+  edf:
+    id: "44181033"
+    label: "European Defence Fund"
+  rfcs:
+    id: "43252449"
+    label: "Research Fund for Coal and Steel"
+  imcap:
+    id: "43251882"
+    label: "Agriculture promotion (IMCAP)"
+  innovfund:
+    id: "43089234"
+    label: "Innovation Fund"
+  emfaf:
+    id: "43392145"
+    label: "European Maritime, Fisheries and Aquaculture Fund"
+  ucpm:
+    id: "31082527"
+    label: "Union Civil Protection Mechanism"
+  i3:
+    id: "44416173"
+    label: "Interregional Innovation Investments"
+  pppa:
+    id: "43637601"
+    label: "Pilot Projects and Preparatory Actions"
+  euba:
+    id: "45532249"
+    label: "EU Bodies and Agencies"
+  hercule:
+    id: "31084392"
+    label: "Hercule / EU Anti-Fraud Programme"
+  rec:
+    id: "31076817"
+    label: "Rights, Equality and Citizenship (2014-2020)"
+
+# F&T Portal status facet values (type=1 is "grants" — the only type this
+# plugin queries; type=2 is tenders/external-action, out of scope here).
+status_codes:
+  forthcoming: "31094501"
+  open: "31094502"
+  closed: "31094503"
+
+# Per-call detail endpoint (same platform the portal's own pages call). The portal
+# serves lowercase identifiers only. The payload is consumed whole: keys the search
+# payload lacks are injected in search shape, the rest is reduced to a few extras.
+detail:
+  url_template: "https://ec.europa.eu/info/funding-tenders/opportunities/data/topicDetails/{identifier_lower}.json"
+  root_key: TopicDetails

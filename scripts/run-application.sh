@@ -22,6 +22,7 @@ PROVIDED_CHROMADB_IMAGE="${CHROMADB_FINAL_IMAGE:-}"
 PROVIDED_RAG_IMAGE="${RAG_IMAGE:-}"
 PROVIDED_ORCHESTRATOR_IMAGE="${ORCHESTRATOR_IMAGE:-}"
 PROVIDED_GUI_IMAGE="${GUI_IMAGE:-}"
+PROVIDED_CALLS_IMAGE="${CALLS_IMAGE:-}"
 
 set -a
 source config/chatbot-common.env
@@ -65,15 +66,22 @@ if [[ -n "$PROVIDED_GUI_IMAGE" ]]; then
   export GUI_IMAGE="$PROVIDED_GUI_IMAGE"
 fi
 
+if [[ -n "$PROVIDED_CALLS_IMAGE" ]]; then
+  export CALLS_IMAGE="$PROVIDED_CALLS_IMAGE"
+fi
+
 : "${CHROMADB_FINAL_IMAGE:?CHROMADB_FINAL_IMAGE is missing or empty}"
 : "${RAG_IMAGE:?RAG_IMAGE is missing or empty}"
 : "${ORCHESTRATOR_IMAGE:?ORCHESTRATOR_IMAGE is missing or empty}"
 : "${GUI_IMAGE:?GUI_IMAGE is missing or empty}"
+: "${CALLS_IMAGE:?CALLS_IMAGE is missing or empty}"
 : "${VITE_ORCHESTRATOR_API_ENDPOINT:?VITE_ORCHESTRATOR_API_ENDPOINT is missing or empty}"
 : "${VITE_BUILD_SHA:?VITE_BUILD_SHA is missing or empty}"
 : "${VITE_DEPLOY_ENV:?VITE_DEPLOY_ENV is missing or empty}"
 : "${OPENAI_API_KEY:?OPENAI_API_KEY is missing or empty}"
 : "${OLLAMA_URL:?OLLAMA_URL is missing or empty}"
+: "${EXTSRC_DB_PASSWORD:?EXTSRC_DB_PASSWORD is missing or empty}"
+: "${EXTSRC_DB_READER_PASSWORD:?EXTSRC_DB_READER_PASSWORD is missing or empty}"
 
 COMPOSE_ARGS=(-f application/docker-compose.yaml)
 

@@ -1,0 +1,67 @@
+# Field spec for EU Funding & Tenders "cascade funding" calls (search type 8): open calls that
+# EU-funded PROJECTS launch to give financial support to third parties (FSTP) — e.g. an EDIH or
+# a Horizon project funding SMEs or researchers. Each is its own call with its own page
+# (.../portal/screen/opportunities/competitive-calls-cs/<id>); `identifier` is the PARENT topic.
+# Every raw key is mapped or ignored (the audit reports anything else as unhandled).
+source: ft_cascade
+transform_modules: [external_sources.plugins.ft_portal_transforms, external_sources.plugins.ft_cascade_transforms]
+
+anchors:
+  status_map: &status_map
+    mapping:
+      "31094501": forthcoming
+      "31094502": open
+      "31094503": closed
+
+finalizers: [derive_status]
+
+fields:
+  ccm2Id: [{to: natural_key, parse: [first, ft_cascade_key]}]
+  callTitle: [{to: title, parse: [first, strip]}]
+  url: [{to: source_url, parse: [first, strip]}]
+  status:
+    - {to: status, parse: [first, {map: *status_map}]}
+    - {to: details.source_status, parse: [first, {map: *status_map}]}
+  deadlineDate:
+    - {to: deadline_date, parse: [ft_pick_deadline, iso_datetime]}
+    - {to: details.deadline_dates, parse: [ft_all_dates]}
+  startDate: [{to: start_date, parse: [first, iso_datetime]}]
+  esDA_IngestDate: [{to: source_updated_at, parse: [first, iso_datetime]}]
+  description:
+    - {to: description, parse: [first, html_to_text], may_be_empty: true}
+    - {to: details.description_links, parse: [first, html_links], may_be_empty: true}
+  budget: [{to: funding_amount, parse: [first, number], may_be_empty: true}]
+
+  identifier: [{to: details.parent_topic, parse: [first, strip]}]
+  title: [{to: details.parent_topic_title, parse: [first, strip]}]
+  projectAcronym: [{to: details.organiser_project_acronym, parse: [first, strip]}]
+  projectName: [{to: details.organiser_project_name, parse: [first, strip]}]
+  projectId: [{to: details.organiser_project_id, parse: [first, strip]}]
+  furtherInformation:
+    - {to: details.further_information, parse: [first, html_to_text], may_be_empty: true}
+    - {to: details.further_information_links, parse: [first, html_links], may_be_empty: true}
+  beneficiaryAdministration:
+    - {to: details.how_to_apply, parse: [first, html_to_text], may_be_empty: true}
+    - {to: details.how_to_apply_links, parse: [first, html_links], may_be_empty: true}
+  duration: [{to: details.duration_text, parse: [first, strip], may_be_empty: true}]
+  closingDate: [{to: details.listing_closing_date, parse: [first, iso_datetime], may_be_empty: true}]
+  deadlineModel: [{to: details.deadline_model, parse: [first, strip]}]
+  programmePeriod: [{to: details.programme_period, parse: [first, strip]}]
+  language: [{to: details.language, parse: [first, strip]}]
+
+  caName: {ignore: "same text as callTitle"}
+  destinationDetails: {ignore: "same HTML as beneficiaryAdministration in the sampled payloads"}
+  frameworkProgramme: {ignore: "programme label is resolved by the plugin from config/eu_programmes.yaml"}
+  type: {ignore: "always '8' (cascade funding)"}
+  sortStatus: {ignore: "search-result ordering key"}
+  callccm2Id: {ignore: "portal-internal call id"}
+  DATASOURCE: {ignore: "search-engine datasource label"}
+  REFERENCE: {ignore: "search-engine document reference"}
+  es_SortDate: {ignore: "search-engine indexing metadata"}
+  es_ContentType: {ignore: "search-engine indexing metadata"}
+  es_Combine: {ignore: "search-engine indexing metadata"}
+  esST_URL: {ignore: "search-engine copy of url"}
+  esST_FileName: {ignore: "search-engine indexing metadata"}
+  esST_checksum: {ignore: "search-engine indexing metadata"}
+  esDA_QueueDate: {ignore: "search-engine indexing metadata"}
+  esDA_FirstIngestDate: {ignore: "search-engine indexing metadata"}

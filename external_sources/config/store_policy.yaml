@@ -1,0 +1,30 @@
+# Policy of the external-sources store (external_sources/store). Numbers here are gates and
+# retention periods; per-source quality thresholds stay in quality_policy.yaml.
+
+validation:
+  # A new snapshot is REJECTED (the last good one stays published, an alert is raised) when:
+  default_min_records_ratio: 0.7   # fetched records / previous snapshot's fetched records < ratio
+                                   # (quality_policy.<source>.min_records_ratio overrides it)
+  min_records_base: 10             # ...only checked when the previous snapshot had at least this many
+  max_required_drop_pp: 25.0       # a required field's coverage falls by more than this many points
+  reject_empty_when_previous: true # 0 records while the previous snapshot had some
+  # Smaller coverage dips only raise alerts (quality_policy coverage_floor / max_drop_pp).
+
+tracking:
+  grace_runs: 2                    # consecutive absent COMPLETE runs before a record expires
+                                   # (a partial run never counts as an absence)
+
+runner:
+  resume_max_age_hours: 36         # an unfinished run younger than this is resumed, older is abandoned
+  document_revalidate_hours: 12    # cached documents younger than this are not re-requested
+  min_request_interval_s: 0.25     # politeness between requests to one fetcher
+  db_connect_attempts: 4
+  sources: [ft_portal, ft_cascade, ft_europeaid]
+
+retention:
+  keep_published_snapshots: 14     # per source; the published and previous ones are never deleted
+  rejected_snapshot_days: 14
+  history_days: 400                # record_change, run, source_run
+  dead_letter_resolved_days: 90
+  orphan_document_days: 30         # document versions no retained snapshot links to
+  run_dir_days: 14                 # local checkpoint/spool directories of finished runs

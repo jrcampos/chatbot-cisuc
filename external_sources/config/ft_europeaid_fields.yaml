@@ -1,0 +1,64 @@
+# Field spec for EU Funding & Tenders "calls for proposals" of EU external action (search type 2,
+# frameworkProgramme 111111 "EU External Action - Prospect", the former EuropeAid PROSPECT system):
+# grants and twinning calls published by EU Delegations and DG INTPA/NEAR/ECHO.
+# Probed live 2026-10-28: 20 open/forthcoming hits, 35 distinct raw keys (all mapped or ignored).
+# There is no description in the payload: the texts are in the published documents
+# (guidelines for applicants, twinning fiche), linked from details.publication_documents.
+source: ft_europeaid
+transform_modules:
+  - external_sources.plugins.ft_portal_transforms
+  - external_sources.plugins.ft_cascade_transforms
+  - external_sources.plugins.ft_europeaid_transforms
+
+anchors:
+  status_map: &status_map
+    mapping:
+      "31094501": forthcoming
+      "31094502": open
+      "31094503": closed
+
+finalizers: [derive_status]
+
+fields:
+  identifier: [{to: natural_key, parse: [first, strip]}]
+  title: [{to: title, parse: [first, strip]}]
+  url: [{to: source_url, parse: [first, ft_topic_url]}]
+  status:
+    - {to: status, parse: [first, {map: *status_map}]}
+    - {to: details.source_status, parse: [first, {map: *status_map}]}
+  deadlineDate:
+    - {to: deadline_date, parse: [ft_pick_deadline, iso_datetime]}
+    - {to: details.deadline_dates, parse: [ft_all_dates]}
+  startDate: [{to: start_date, parse: [first, iso_datetime]}]
+  esDA_IngestDate: [{to: source_updated_at, parse: [first, iso_datetime]}]
+  budget: [{to: funding_amount, parse: [first, number], may_be_empty: true}]
+  currency: [{to: details.currency, parse: [first, strip]}]
+  callIdentifier: [{to: details.call_identifier, parse: [first, strip]}]
+  REFERENCE: [{to: details.portal_reference, parse: [first, strip]}]
+  contractType: [{to: details.contract_type_code, parse: [first, strip]}]
+  geographicalZones: [{to: details.geographical_zone_codes, parse: [string_list]}]
+  programmeDivisionProspect: [{to: details.programme_division_code, parse: [first, strip]}]
+  programmePeriod: [{to: details.programme_period, parse: [string_list]}]
+  language: [{to: details.language, parse: [first, strip]}]
+  updateDate: [{to: details.update_date, parse: [first, iso_datetime]}]
+  publicationDocuments:
+    - {to: details.publication_documents, parse: [first, ft_publication_documents], may_be_empty: true}
+  beneficiaryAdministration:
+    - {to: details.beneficiary_administration, parse: [first, ft_strip_label], may_be_empty: true}
+  caName: [{to: details.ca_name_flag, parse: [first, strip], may_be_empty: true}]
+
+  geographicalZone: {ignore: "first entry of geographicalZones"}
+  frameworkProgramme: {ignore: "always 111111 (EU External Action - Prospect); the label comes from the facet endpoint"}
+  type: {ignore: "always '2' (calls for proposals)"}
+  sortStatus: {ignore: "search-result ordering key"}
+  DATASOURCE: {ignore: "search-engine datasource label"}
+  datasource: {ignore: "search-engine datasource label (lowercase duplicate)"}
+  corporate-search-version: {ignore: "search-engine indexing metadata"}
+  es_SortDate: {ignore: "search-engine indexing metadata"}
+  es_ContentType: {ignore: "search-engine indexing metadata"}
+  es_Combine: {ignore: "search-engine indexing metadata"}
+  esST_URL: {ignore: "search-engine copy of url"}
+  esST_FileName: {ignore: "search-engine indexing metadata"}
+  esST_checksum: {ignore: "search-engine indexing metadata"}
+  esDA_QueueDate: {ignore: "search-engine indexing metadata"}
+  esDA_FirstIngestDate: {ignore: "search-engine indexing metadata"}

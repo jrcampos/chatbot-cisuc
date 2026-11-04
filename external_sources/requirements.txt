@@ -1,0 +1,6 @@
+requests>=2.31.0
+pydantic>=2.0.0
+PyYAML>=6.0
+beautifulsoup4>=4.12.3,<5.0
+lxml>=5.0  # documents/convert.py: DOCX (WordprocessingML) and HTML parsing
+psycopg[binary]>=3.1,<4  # external_sources/store only (imported lazily)

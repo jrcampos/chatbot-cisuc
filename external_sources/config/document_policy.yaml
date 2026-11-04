@@ -1,0 +1,41 @@
+# Which documents a call links to, and what to do with each.
+# Roles: call_specific (about ONE call), programme_level (shared work programme /
+# guide sliced per call), boilerplate (T&C, grant agreement, legal texts: stored
+# once, tagged, excluded from ordinary retrieval), other (unclassified pages:
+# kept as links, fetched only if listed in fetch_roles).
+link_fields: [conditions_links, description_links, support_links, destination_links, publication_documents]
+
+ignore_url_patterns:
+  - "/submission/manage/"
+  - "mailto:"
+  - "javascript:"
+
+call_specific_markers: ["call-fiche", "call-document", "call_document"]
+
+# Link texts (regex, case-insensitive) that name a call-specific document.
+call_specific_text_patterns: ['^\s*call\s+(document|fiche|text)', '^\s*(guidelines\s+for\s+applicants|twinning\s+fiche)']
+
+# URLs (regex, searched) never fetched for any programme: status skipped_policy.
+# The legacy participant portal answers 403 "Disallowed by robots.txt".
+skip_url_patterns: ['ec\.europa\.eu/research/participants/']
+
+boilerplate_url_patterns:
+  - "/opportunities/docs/2021-2027/common/"
+  - "/temp-form/"
+  - "eur-lex.europa.eu"
+  - "op.europa.eu"
+
+programme_level_url_patterns:
+  - "/wp-call/"
+  - "work-programme"
+  - "work_programme"
+  - "/guidance/programme-guide"
+
+# europa.eu "document" landing pages (ECCC, EIC, JUs) only offer the real file behind a link such as
+# "Download (996.35 KB - PDF)". For call_specific / programme_level documents, the first link whose
+# text matches is followed ONCE, on the same host only; the file is stored under the landing page's
+# id with `resolved_url` in its metadata (both are cited).
+follow_download_text_patterns: ['^\s*Download\s*\(']
+
+fetch_roles: [call_specific, programme_level, boilerplate]
+max_bytes: 60000000

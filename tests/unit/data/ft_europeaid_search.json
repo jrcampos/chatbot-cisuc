@@ -1,0 +1,408 @@
+{
+ "totalResults": 4,
+ "results": [
+  {
+   "metadata": {
+    "updateDate": [
+     "2026-10-06T12:07:49.000+0000"
+    ],
+    "es_SortDate": [
+     "2026-10-07T10:00:56.000+0000"
+    ],
+    "beneficiaryAdministration": [],
+    "sortStatus": [
+     "1"
+    ],
+    "contractType": [
+     "42893160"
+    ],
+    "language": [
+     "en"
+    ],
+    "title": [
+     "Cross-border Programme North Macedonia - Albania under the Instrument of Pre-accession Assistance (IPA III) allocations for 2024"
+    ],
+    "type": [
+     "2"
+    ],
+    "esST_checksum": [
+     "CDCB657B08C8A1ABAF88AEE41D8AF85A9B3C3A10B71B9ED1D2300806F3D0AEEF"
+    ],
+    "esST_FileName": [
+     "file.txt"
+    ],
+    "callIdentifier": [
+     "187670"
+    ],
+    "DATASOURCE": [
+     "SEDIA"
+    ],
+    "REFERENCE": [
+     "187670PROSPECTSEN"
+    ],
+    "currency": [
+     "EUR"
+    ],
+    "frameworkProgramme": [
+     "111111"
+    ],
+    "budget": [
+     "3430000"
+    ],
+    "identifier": [
+     "EuropeAid/187670/DD/ACT/Multi"
+    ],
+    "es_ContentType": [
+     "text/plain"
+    ],
+    "geographicalZones": [
+     "31085472"
+    ],
+    "publicationDocuments": [
+     "[{\"nameDoc\":\"Guidelines for applicants\",\"typeDoc\":\"docx\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2026-10-07 12:00:38.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=2228691&lang=EN\"},{\"nameDoc\":\"Annex B - Budget\",\"typeDoc\":\"xlsx\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2026-10-07 12:00:31.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=2213461&lang=EN\"},{\"nameDoc\":\"Annex C - Logical framework\",\"typeDoc\":\"docx\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2026-10-07 12:00:49.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=2213464&lang=EN\"},{\"nameDoc\":\"Annex D - Identification Form (public law bodies)\",\"typeDoc\":\"pdf\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2026-10-07 12:00:07.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=2213468&lang=EN\"},{\"nameDoc\":\"Annex D - Identification Form (private or public with legal form)\",\"typeDoc\":\"pdf\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2026-10-07 12:00:26.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=2213465&lang=EN\"},{\"nameDoc\":\"Annex D - Identification Form (natural person)\",\"typeDoc\":\"pdf\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2026-10-07 12:00:19.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=2213463&lang=EN\"},{\"nameDoc\":\"Annex F - PADOR offline registration form\",\"typeDoc\":\"pdf\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2026-10-07 12:00:51.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=2213462&lang=EN\"},{\"nameDoc\":\"Annex G - Standard grant contract\",\"typeDoc\":\"zip\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2026-10-07 12:00:09.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=2213466&lang=EN\"},{\"nameDoc\":\"Annex H - Declaration of honour on exclusion and selection criteria\",\"typeDoc\":\"docx\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2026-10-07 12:00:07.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=2213459&lang=EN\"},{\"nameDoc\":\"Annex K - Clarifications on financing not linked to costs\",\"typeDoc\":\"docx\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2026-10-07 12:00:49.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=2213458&lang=EN\"},{\"nameDoc\":\"Annex J - Information on the tax regime applicable to grant contracts\",\"typeDoc\":\"docx\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2026-10-07 12:00:44.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=2213467&lang=EN\"},{\"nameDoc\":\"Appendix - Derogations international organisations\",\"typeDoc\":\"docx\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2026-10-07 12:00:45.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=2213460&lang=EN\"},{\"nameDoc\":\"Annex L - Self-evaluation questionnaire on SEA-H\",\"typeDoc\":\"docx\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2026-10-07 12:00:46.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=2213457&lang=EN\"},{\"nameDoc\":\"e-Calls PADOR privacy statement\",\"typeDoc\":\"docx\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2026-10-07 12:00:38.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=2213469&lang=EN\"}]"
+    ],
+    "esDA_FirstIngestDate": [
+     "2026-10-07T12:01:00.490+0200"
+    ],
+    "programmePeriod": [
+     "2014 - 2020",
+     "2021 - 2027"
+    ],
+    "deadlineDate": [
+     "2027-01-15T11:00:31.000+0000"
+    ],
+    "esDA_IngestDate": [
+     "2026-10-07T12:01:00.490+0200"
+    ],
+    "url": [
+     "https://webgate.ec.europa.eu/prospect/external/publishedcalls.htm?callId=187670"
+    ],
+    "es_Combine": [
+     "1"
+    ],
+    "esST_URL": [
+     "https://webgate.ec.europa.eu/prospect/external/publishedcalls.htm?callId=187670"
+    ],
+    "esDA_QueueDate": [
+     "2026-10-07T12:01:00.483+0200"
+    ],
+    "programmeDivisionProspect": [
+     "42921320"
+    ],
+    "geographicalZone": [
+     "31085472"
+    ],
+    "startDate": [
+     "2026-10-07T10:00:56.000+0000"
+    ],
+    "status": [
+     "31094502"
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "updateDate": [
+     "2026-09-02T13:12:43.000+0000"
+    ],
+    "es_SortDate": [
+     "2026-09-03T10:00:28.000+0000"
+    ],
+    "beneficiaryAdministration": [
+     ":  Ministry of Transport and Public Enterprise for State Roads"
+    ],
+    "sortStatus": [
+     "1"
+    ],
+    "contractType": [
+     "42958121"
+    ],
+    "language": [
+     "en"
+    ],
+    "title": [
+     "MK 24 IPA TR 01 26 Alignment of national legislation and policies with EU Acquis for road infrastructure management together with capacity building"
+    ],
+    "type": [
+     "2"
+    ],
+    "esST_checksum": [
+     "38EA3082BD55E684836AE8922288B4E1452C4686B525F45BEE74E63EACA3EDA3"
+    ],
+    "esST_FileName": [
+     "file.txt"
+    ],
+    "callIdentifier": [
+     "187686"
+    ],
+    "DATASOURCE": [
+     "SEDIA"
+    ],
+    "REFERENCE": [
+     "187686PROSPECTSEN"
+    ],
+    "currency": [
+     "EUR"
+    ],
+    "frameworkProgramme": [
+     "111111"
+    ],
+    "budget": [
+     "1300000"
+    ],
+    "identifier": [
+     "EuropeAid/187686/ID/ACT/MK"
+    ],
+    "caName": [
+     "true"
+    ],
+    "es_ContentType": [
+     "text/plain"
+    ],
+    "geographicalZones": [
+     "20000952"
+    ],
+    "publicationDocuments": [
+     "[{\"nameDoc\":\"Twinning Fiche\",\"typeDoc\":\"pdf\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2026-09-03 12:00:22.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=2214470&lang=EN\"},{\"nameDoc\":\"Annex C9 Standard Twinning\",\"typeDoc\":\"pdf\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2026-09-03 12:00:33.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=2214469&lang=EN\"}]"
+    ],
+    "esDA_FirstIngestDate": [
+     "2026-09-03T12:01:00.601+0200"
+    ],
+    "programmePeriod": [
+     "2014 - 2020",
+     "2021 - 2027"
+    ],
+    "deadlineDate": [
+     "2026-11-05T22:59:00.000+0000"
+    ],
+    "esDA_IngestDate": [
+     "2026-09-03T12:01:00.601+0200"
+    ],
+    "url": [
+     "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/187686PROSPECTSEN"
+    ],
+    "es_Combine": [
+     "1"
+    ],
+    "esST_URL": [
+     "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/topic-details/187686PROSPECTSEN"
+    ],
+    "esDA_QueueDate": [
+     "2026-09-03T12:01:00.595+0200"
+    ],
+    "programmeDivisionProspect": [
+     "42921320"
+    ],
+    "geographicalZone": [
+     "20000952"
+    ],
+    "startDate": [
+     "2026-09-03T10:00:28.000+0000"
+    ],
+    "status": [
+     "31094502"
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "updateDate": [
+     "2021-09-01T14:07:35.000+0000"
+    ],
+    "es_SortDate": [
+     "2021-07-30T10:00:02.000+0000"
+    ],
+    "beneficiaryAdministration": [
+     "Ministry of Public Administration and Local Self-Government"
+    ],
+    "sortStatus": [
+     "1"
+    ],
+    "contractType": [
+     "42958121"
+    ],
+    "language": [
+     "en"
+    ],
+    "type": [
+     "2"
+    ],
+    "title": [
+     "Support to the Ministry of Public Administration and Local Self-Government in modernizing the personnel planning procedure for State Administration and harmonizing the Catalogue of titles in State administration and Local Self-Governments"
+    ],
+    "esST_checksum": [
+     "603A6919F561DB11B0DDC3AC4BDB25FD13B1CF80D514266713EE4B2F743B4CE6"
+    ],
+    "esST_FileName": [
+     "file.txt"
+    ],
+    "callIdentifier": [
+     "172802"
+    ],
+    "DATASOURCE": [
+     "SEDIA_PRD_CENTRICITY"
+    ],
+    "currency": [
+     "EUR"
+    ],
+    "frameworkProgramme": [
+     "111111"
+    ],
+    "budget": [
+     "250000"
+    ],
+    "identifier": [
+     "EuropeAid/172802/ID/ACT/RS"
+    ],
+    "caName": [
+     "true"
+    ],
+    "es_ContentType": [
+     "text/plain"
+    ],
+    "geographicalZones": [
+     "20001057"
+    ],
+    "publicationDocuments": [
+     "[{\"nameDoc\":\"Questions and Answers 1\",\"typeDoc\":\"pdf\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2021-09-02 00:00:23.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=1307312&lang=EN\"},{\"nameDoc\":\"Annex C9\",\"typeDoc\":\"pdf\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2021-07-30 12:00:05.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=1307305&lang=EN\"},{\"nameDoc\":\"Annex C1\",\"typeDoc\":\"docx\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2021-07-30 12:00:51.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=1307306&lang=EN\"}]"
+    ],
+    "programmePeriod": [
+     "2014 - 2020",
+     "2021 - 2027"
+    ],
+    "esDA_IngestDate": [
+     "2023-03-13T17:38:57.642+0100"
+    ],
+    "es_Combine": [
+     "1"
+    ],
+    "corporate-search-version": [
+     "102"
+    ],
+    "url": [
+     "https://ec.europa.eu/info/funding-tenders/opportunities/data/topicDetails/172802EN"
+    ],
+    "esST_URL": [
+     "https://ec.europa.eu/info/funding-tenders/opportunities/data/topicDetails/172802EN"
+    ],
+    "esDA_QueueDate": [
+     "2023-03-13T17:38:39.641+0100"
+    ],
+    "programmeDivisionProspect": [
+     "42921320"
+    ],
+    "geographicalZone": [
+     "20001057"
+    ],
+    "datasource": [
+     "SEDIA_PRD_CENTRICITY"
+    ],
+    "startDate": [
+     "2021-07-30T10:00:02.000+0000"
+    ],
+    "status": [
+     "31094502"
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "updateDate": [
+     "2023-04-19T08:34:42.000+0000"
+    ],
+    "es_SortDate": [
+     "2023-03-21T11:00:39.000+0000"
+    ],
+    "beneficiaryAdministration": [],
+    "sortStatus": [
+     "1"
+    ],
+    "contractType": [
+     "42893160"
+    ],
+    "language": [
+     "en"
+    ],
+    "type": [
+     "2"
+    ],
+    "title": [
+     "EU programme in support of Primary Health Care in Lebanon"
+    ],
+    "esST_checksum": [
+     "1025A7489061CC406B24E79F4A7D7E27841CFCE406C6DBC6B9D3B23E24F142D6"
+    ],
+    "esST_FileName": [
+     "file.txt"
+    ],
+    "callIdentifier": [
+     "177107"
+    ],
+    "DATASOURCE": [
+     "SEDIA_PRD_CENTRICITY"
+    ],
+    "currency": [
+     "EUR"
+    ],
+    "frameworkProgramme": [
+     "111111"
+    ],
+    "budget": [
+     "30000000"
+    ],
+    "identifier": [
+     "EuropeAid/177107/DD/ACT/LB"
+    ],
+    "es_ContentType": [
+     "text/plain"
+    ],
+    "geographicalZones": [
+     "20000938"
+    ],
+    "publicationDocuments": [
+     "[{\"nameDoc\":\"Questions & Answers - 1 to 4\",\"typeDoc\":\"pdf\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2023-04-20 12:00:33.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=1617464&lang=EN\"},{\"nameDoc\":\"Guidelines for Applicants\",\"typeDoc\":\"pdf\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2023-03-21 12:00:53.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=1617455&lang=EN\"},{\"nameDoc\":\"Annex A.1 Grant application form-Concept note op (en)\",\"typeDoc\":\"docx\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2023-03-21 12:00:55.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=1617451&lang=EN\"},{\"nameDoc\":\"Annex A.2 Grant application form-Full application op (en)\",\"typeDoc\":\"docx\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2023-03-21 12:00:03.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=1617452&lang=EN\"},{\"nameDoc\":\"Annex B. Budget\",\"typeDoc\":\"xlsx\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2023-03-21 12:00:40.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=1617457&lang=EN\"},{\"nameDoc\":\"Annex C - Logical Framework\",\"typeDoc\":\"docx\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2023-03-21 12:00:06.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=1617446&lang=EN\"},{\"nameDoc\":\"Annex D. Legal Entity File (public bodies)\",\"typeDoc\":\"pdf\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2023-03-21 12:00:55.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=1617456&lang=EN\"},{\"nameDoc\":\"Annex D. Legal Entity File (private or public with legal form)\",\"typeDoc\":\"pdf\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2023-03-21 12:00:41.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=1617453&lang=EN\"},{\"nameDoc\":\"Annex E. Financial identification form\",\"typeDoc\":\"pdf\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2023-03-21 12:00:06.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=1617449&lang=EN\"},{\"nameDoc\":\"Annex G. Standard grant contract\",\"typeDoc\":\"zip\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2023-03-21 12:00:53.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=1617454&lang=EN\"},{\"nameDoc\":\"Annex H - Declaration of honour on exclusion and selection criteria\",\"typeDoc\":\"docx\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2023-03-21 12:00:11.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=1617447&lang=EN\"},{\"nameDoc\":\"Annex J. Information on tax regimes\",\"typeDoc\":\"pdf\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2023-03-21 12:00:17.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=1617450&lang=EN\"},{\"nameDoc\":\"Annex K. Guidelines for Simplified cost options\",\"typeDoc\":\"docx\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2023-03-21 12:00:08.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=1617445&lang=EN\"},{\"nameDoc\":\"Annex L Sexual harassment\",\"typeDoc\":\"docx\",\"languageDoc\":\"EN\",\"finalPublicDocDate\":\"2023-03-21 12:00:48.0\",\"docUrl\":\"https://webgate.ec.europa.eu/prospect/internal/noauth/externalDocumentDownload.htm?id=1617448&lang=EN\"}]"
+    ],
+    "programmePeriod": [
+     "2014 - 2020",
+     "2021 - 2027"
+    ],
+    "deadlineDate": [
+     "2023-06-23T10:00:58.000+0000"
+    ],
+    "esDA_IngestDate": [
+     "2023-04-20T12:01:15.843+0200"
+    ],
+    "es_Combine": [
+     "1"
+    ],
+    "corporate-search-version": [
+     "102"
+    ],
+    "url": [
+     "https://webgate.ec.europa.eu/prospect/external/publishedcalls.htm?callId=177107"
+    ],
+    "esST_URL": [
+     "https://webgate.ec.europa.eu/prospect/external/publishedcalls.htm?callId=177107"
+    ],
+    "esDA_QueueDate": [
+     "2023-04-20T12:01:04.519+0200"
+    ],
+    "programmeDivisionProspect": [
+     "42921254"
+    ],
+    "geographicalZone": [
+     "20000938"
+    ],
+    "datasource": [
+     "SEDIA_PRD_CENTRICITY"
+    ],
+    "startDate": [
+     "2023-03-21T11:00:39.000+0000"
+    ],
+    "status": [
+     "31094502"
+    ]
+   }
+  }
+ ]
+}

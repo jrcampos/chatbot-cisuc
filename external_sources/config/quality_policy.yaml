@@ -1,0 +1,49 @@
+# Quality policy per plugin. Thresholds raise ALERTS (log / webhook); they never
+# exclude records or stop a run — a call is never dropped for missing information.
+ft_portal:
+  required_fields: [title, status, deadline_date, source_url, description]
+  # A label is satisfied when ANY member is filled. Budget exists at several levels and
+  # each is kept separately: the topic's own budget, the topic's row in the call
+  # document's table, and the call's total.
+  required_any:
+    budget: [funding_amount, details.topic_budget_eur, details.call_budget_eur]
+  track_fields: [funding_amount, details.topic_budget_eur, details.call_budget_eur]  # reported, never a gap
+  coverage_floor:            # fraction of records that must have the field
+    title: 1.0
+    status: 1.0
+    deadline_date: 1.0
+    source_url: 1.0
+    description: 0.98
+    budget: 0.98
+  max_drop_pp: 2.0           # alert when a field's coverage falls by more than this many points vs the last run
+  min_records_ratio: 0.7     # alert when this run has < 70% of the previous run's records
+  max_document_failure_ratio: 0.25   # alert when > 25% of call documents failed to fetch/convert
+ft_cascade:
+  required_fields: [title, status, deadline_date, source_url, description]
+  required_any:
+    budget: [funding_amount]
+  track_fields: [funding_amount]
+  coverage_floor:
+    title: 1.0
+    status: 1.0
+    source_url: 1.0
+    deadline_date: 0.95
+    description: 0.9
+    budget: 0.8
+  max_drop_pp: 5.0
+  min_records_ratio: 0.5     # project-run calls come and go in small numbers
+  max_document_failure_ratio: 0.5
+ft_europeaid:
+  # The type-2 payload has no description: the texts are the published documents.
+  required_fields: [title, status, source_url]
+  required_any:
+    budget: [funding_amount]
+  track_fields: [funding_amount]
+  coverage_floor:
+    title: 1.0
+    status: 1.0
+    source_url: 1.0
+    budget: 0.9
+  max_drop_pp: 10.0
+  min_records_ratio: 0.4     # ~20 live calls: a few closing is a large ratio
+  max_document_failure_ratio: 0.5

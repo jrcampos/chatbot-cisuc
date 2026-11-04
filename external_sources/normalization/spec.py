@@ -12,7 +12,7 @@ feeds), `finalizers` ([names] run after all rules), `transform_modules`
 brings its own source-specific transforms), `fields`.
 
 Adding a programme means writing a plugin plus one spec — the engine, the
-transforms and the audit stay untouched.
+and the transforms stay untouched.
 """
 
 from __future__ import annotations

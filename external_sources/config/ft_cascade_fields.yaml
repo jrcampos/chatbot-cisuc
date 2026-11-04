@@ -2,7 +2,7 @@
 # EU-funded PROJECTS launch to give financial support to third parties (FSTP) — e.g. an EDIH or
 # a Horizon project funding SMEs or researchers. Each is its own call with its own page
 # (.../portal/screen/opportunities/competitive-calls-cs/<id>); `identifier` is the PARENT topic.
-# Every raw key is mapped or ignored (the audit reports anything else as unhandled).
+# Every raw key is mapped or ignored (anything else becomes a `schema_drift` gap).
 source: ft_cascade
 transform_modules: [external_sources.plugins.ft_portal_transforms, external_sources.plugins.ft_cascade_transforms]
 

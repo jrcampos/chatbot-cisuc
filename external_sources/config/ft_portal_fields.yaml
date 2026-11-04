@@ -1,6 +1,6 @@
 # Field spec for the EU Funding & Tenders Portal search API.
-# EVERY raw key the API sends is either mapped or explicitly ignored — the audit
-# reports any key not listed here as `unhandled` (source drift / new fields).
+# EVERY raw key the API sends is either mapped or explicitly ignored — the plugin
+# records any key not listed here as a `schema_drift` gap (source drift / new fields).
 # Two record families exist in the payload (536 rich "topic" records with
 # budget/description/conditions, 565 leaner "call" records); keys absent from a
 # record are simply "source_absent" for it.

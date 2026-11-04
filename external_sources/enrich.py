@@ -1,14 +1,13 @@
 """
 Enrichment orchestrator: documents -> extraction -> provenance -> gaps -> quality.
 
-Reads the records the extraction step wrote (`output/ft_portal.json`), reads every
-document each call links to and applies the extracted values with these rules: an EMPTY
-field is filled; an existing API value is replaced only when it is a repeated call total
+Takes the records a source plugin collected (layer 1, already completed from the detail
+endpoint, layer 2), reads every document each call links to (layer 3) and applies the
+extracted values with these rules: an EMPTY field is filled; an existing API value is replaced only when it is a repeated call total
 (`api_is_call_total`) or the document is newer (`newer_document`), and the old value is
 kept in `details.value_history`; any other disagreement stays as a `discrepancy` gap and
-the API value is kept. Provenance and gaps are recorded on each record, records are classified
-against the previous run, the enriched output and a quality report are written, and
-alerts are sent. Nothing here drops a record.
+the API value is kept. Provenance, gaps, per-field verification verdicts, value ranges and
+citable sources are recorded on each record. Nothing here drops a record.
 
 Used by the store runner (`external_sources/store/runner.py`), which collects, enriches and loads
 every source in one scheduled run.

@@ -43,8 +43,7 @@ def transform(name: str, produces_date: bool = False) -> Callable[[Transform], T
     Register `fn` under `name`. Raises ValueError if the name is taken.
 
     `produces_date=True` flags a transform whose output is ISO-8601 UTC date
-    string(s): the loader then accepts it for date targets and the audit
-    checks the resulting value's format.
+    string(s): `load_spec` requires such a step for every date target.
     """
 
     def decorator(fn: Transform) -> Transform:
@@ -240,7 +239,7 @@ def iso_datetime(value: Any, ctx: dict[str, Any]) -> str | None:
     """
     Normalise a date/datetime string to ISO-8601 UTC
     (`YYYY-MM-DDTHH:MM:SS+00:00`). Naive values and bare dates are treated as
-    UTC. Unparseable input yields None so the audit surfaces the gap.
+    UTC. Unparseable input yields None, recorded as a gap on the record.
     """
     if not isinstance(value, str):
         return None

@@ -11,7 +11,7 @@ def dedupe_by_natural_key(records: list[Any]) -> tuple[list[Any], int]:
 
     Among duplicates the record with the most `raw` keys wins; ties keep the
     first one seen. Survivors keep first-occurrence order. Records with an
-    empty natural key are never merged (the audit flags them instead).
+    empty natural key are never merged (the plugins dead-letter them instead).
     """
     kept: list[Any] = []
     index_by_key: dict[str, int] = {}

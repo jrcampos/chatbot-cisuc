@@ -125,9 +125,8 @@ class SourcePlugin(ABC):
     A plugin is responsible for one source. `fetch()` is the only required
     behaviour: go get the data, normalize it, return it. Plugins do not
     write to any storage themselves — that's the caller's job (currently
-    `store/runner.py`). A plugin with
-    a declarative field spec exposes it here so the audit can check its output;
-    plugins without one are skipped.
+    `store/runner.py`). A plugin with a declarative field spec exposes it here
+    (the F&T plugins use it to normalize and to detect unmapped raw keys).
 
     Resilient plugins also fill `self.failures` (items that could not be read or
     normalized) and `self.partial_reasons` during `fetch()` instead of raising, and

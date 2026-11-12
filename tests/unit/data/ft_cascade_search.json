@@ -1,0 +1,120 @@
+{
+ "results": [
+  {
+   "metadata": {
+    "es_SortDate": [
+     "2026-03-24T00:00:00.000+0000"
+    ],
+    "beneficiaryAdministration": [
+     "<p><strong>HOW TO SUBMIT A GRANT APPLICATION?</strong></p><ol><li data-list=\"bullet\"><span class=\"ql-ui\" contenteditable=\"false\"></span>Complete and submit your application using the online application form. Log in at https://www.palyazat.gov.hu via the \"Single sign-on Interface Login\" button to acc"
+    ],
+    "sortStatus": [
+     "1"
+    ],
+    "description": [
+     "<p><strong>WHO CAN SUBMIT A GRANT APPLICATION?</strong></p><p>Micro, small and medium-sized enterprises may submit grant applications for the call if they:</p><ol><li data-list=\"bullet\"><span class=\"ql-ui\" contenteditable=\"false\"></span>have at least three closed financial years (each supported by f"
+    ],
+    "language": [
+     "en"
+    ],
+    "title": [
+     "Deploying The Network of National Coordination Centres with Member States"
+    ],
+    "type": [
+     "8"
+    ],
+    "esST_checksum": [
+     "4CD0CB7B8DBDC93F0F8F05608D631F33A0AB1C79E4FE52AB6AB76B8180167130"
+    ],
+    "duration": [
+     "WHEN IS THE CALL FOR PROPOSALS AVAILABLE?\nThe call for proposals with the code number SSNS-NCC-HU-FSTP-2026 entitled “Enhancing the Cybersecurity Capabilities of the Domestic SME Sector” was published on 2026.03.24 on the official website of NCC-HU and on the website https://www.palyazat.gov.hu.\n\nWH"
+    ],
+    "destinationDetails": [
+     "<p><strong>HOW TO SUBMIT A GRANT APPLICATION?</strong></p><ol><li data-list=\"bullet\"><span class=\"ql-ui\" contenteditable=\"false\"></span>Complete and submit your application using the online application form. Log in at https://www.palyazat.gov.hu via the \"Single sign-on Interface Login\" button to acc"
+    ],
+    "esST_FileName": [
+     "file.txt"
+    ],
+    "ccm2Id": [
+     "46786367"
+    ],
+    "callccm2Id": [
+     "13882"
+    ],
+    "DATASOURCE": [
+     "SEDIA"
+    ],
+    "REFERENCE": [
+     "13882COMPETITIVE_CALLen"
+    ],
+    "projectAcronym": [
+     "NCC-HU"
+    ],
+    "callTitle": [
+     "Enhancing the Cybersecurity Capabilities of the Domestic SME Sector (SSNS-NCC-HU-FSTP-2026)"
+    ],
+    "frameworkProgramme": [
+     "43152860"
+    ],
+    "budget": [
+     "2000000"
+    ],
+    "identifier": [
+     "DIGITAL-ECCC-2024-DEPLOY-NCC-06-MS-COORDINATION"
+    ],
+    "furtherInformation": [
+     "<p>The purpose of this call for proposals is to enhance the cybersecurity resilience and risk management capabilities of the domestic SME sector, thereby contributing to the objectives of the European Cybersecurity Industrial, Technology and Research Competence Centre (hereinafter: ECCC) as set out "
+    ],
+    "caName": [
+     "Enhancing the Cybersecurity Capabilities of the Domestic SME Sector (SSNS-NCC-HU-FSTP-2026)"
+    ],
+    "es_ContentType": [
+     "text/plain"
+    ],
+    "esDA_FirstIngestDate": [
+     "2026-05-08T08:59:38.614+0200"
+    ],
+    "programmePeriod": [
+     "2021 - 2027"
+    ],
+    "deadlineDate": [
+     "2026-06-28T22:59:00.000+0000"
+    ],
+    "esDA_IngestDate": [
+     "2026-05-24T20:40:05.708+0200"
+    ],
+    "closingDate": [
+     "2026-05-24T00:00:00Z"
+    ],
+    "url": [
+     "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/competitive-calls-cs/46786367"
+    ],
+    "es_Combine": [
+     "1"
+    ],
+    "esST_URL": [
+     "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/competitive-calls-cs/46786367"
+    ],
+    "esDA_QueueDate": [
+     "2026-05-24T20:40:05.694+0200"
+    ],
+    "projectName": [
+     "National Coordination Centre - Hungary"
+    ],
+    "projectId": [
+     "101194933"
+    ],
+    "startDate": [
+     "2026-03-24T00:00:00.000+0000"
+    ],
+    "deadlineModel": [
+     "single-stage"
+    ],
+    "status": [
+     "31094502"
+    ]
+   }
+  }
+ ],
+ "totalResults": 1
+}

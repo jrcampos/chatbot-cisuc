@@ -1,0 +1,25 @@
+# Quality policy per source, read by the enricher (gaps) and the store loader (gates).
+# required_fields / required_any: a record missing them gets a `missing_required` gap (never dropped).
+#   required_any is satisfied when ANY member is filled; budgets are kept at separate levels.
+# coverage_floor: fraction of records that should have the field; below it raises an alert.
+# min_records_ratio: a load with fewer records than this ratio of the previous one is REJECTED
+#   (the previous snapshot stays published); overrides store_policy's default.
+ft_portal:
+  required_fields: [title, status, deadline_date, source_url, description]
+  required_any:
+    budget: [funding_amount, details.topic_budget_eur, details.call_budget_eur]
+  coverage_floor: {title: 1.0, status: 1.0, deadline_date: 1.0, source_url: 1.0, description: 0.98, budget: 0.98}
+  min_records_ratio: 0.7
+ft_cascade:
+  required_fields: [title, status, deadline_date, source_url, description]
+  required_any:
+    budget: [funding_amount]
+  coverage_floor: {title: 1.0, status: 1.0, source_url: 1.0, deadline_date: 0.95, description: 0.9, budget: 0.8}
+  min_records_ratio: 0.5     # project-run calls come and go in small numbers
+ft_europeaid:
+  # The type-2 payload has no description: the texts are the published documents.
+  required_fields: [title, status, source_url]
+  required_any:
+    budget: [funding_amount]
+  coverage_floor: {title: 1.0, status: 1.0, source_url: 1.0, budget: 0.9}
+  min_records_ratio: 0.4     # ~20 live calls: a few closing is a large ratio

@@ -1,0 +1,25 @@
+# How a call is turned into model context. Sizes are CHARACTERS (≈4 per token).
+default_max_chars: 6000
+truncation_marker: " … [truncated — full text: {url}]"
+
+blocks:                      # per-block caps (doc:* blocks share the `doc` cap)
+  description: {max_chars: 3000}
+  budget: {max_chars: 700}
+  deadlines: {max_chars: 500}
+  conditions: {max_chars: 2500}
+  support: {max_chars: 700}
+  submission_notice: {max_chars: 500}
+  destination: {max_chars: 1200}
+  latest_updates: {max_chars: 1000}
+  links: {max_chars: 700}
+  sources: {max_chars: 900}           # numbered citable sources (details.sources); kept right after the card
+  doc: {max_chars: 2500}
+
+intents:                     # ordered by priority: earlier blocks are filled first
+  find_calls:   {max_chars: 1500, blocks: [card]}
+  list_calls:   {max_chars: 950, blocks: [card, deadlines, budget, description]}   # one call of a chatbot list
+  explain_call: {max_chars: 6000, blocks: [card, sources, description, budget, deadlines, latest_updates]}
+  eligibility:  {max_chars: 6000, blocks: [card, sources, conditions, "doc:eligibility", latest_updates]}
+  how_to_apply: {max_chars: 5000, blocks: [card, sources, submission_notice, support, deadlines, links]}
+  funding:      {max_chars: 3000, blocks: [card, sources, budget, "doc:budget"]}
+  deadlines:    {max_chars: 2000, blocks: [card, sources, deadlines, latest_updates]}

@@ -43,6 +43,7 @@ The CISUC Chatbot is developed within the Centre for Informatics and Systems of 
 ### Developers
 
 - Arthur Sophiatti
+- Gabriel Almeida
 
 ---
 

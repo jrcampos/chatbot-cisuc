@@ -1,0 +1,211 @@
+# Per document-FAMILY extraction rules. A family is a template shared by many calls
+# (e.g. every F&T call fiche has "Available budget" / "Objectives" sections), not a
+# single call. Adding a programme/agency template = adding a family here.
+#
+# family.roles      document roles (config/document_policy.yaml) the family applies to
+# family.anchored   true: work only inside the slice introduced by the call's identifier
+# family.call_anchored  true: every pattern uses {CALL} (the record's call identifier, escaped, followed
+#                   by whitespace); without a call identifier the family does nothing. May read pool docs.
+# field.unit        eur with ONE capture group (no {EUR}): 'million' scales a bare number (WP tables)
+# family.anchor     by_heading: [{identifier: <regex>, heading: <regex>}] - programme documents NOT
+#                   organised by topic id: the first rule whose identifier matches the call picks the
+#                   heading whose section (to the next heading of the same/higher level, or the next
+#                   Roman-numeral heading in converted PDFs) is the slice. No rule => nothing, no note.
+#                   Mutually exclusive with anchored.
+# family.sections   name -> regex OR list of regexes matched against heading text (case-insensitive);
+#                   the first heading in document order matching ANY of them is the section
+# field.target      where the value goes: a top-level field or details.<name> (default: field name)
+# field.parse       eur (first euro amount) | text (cleaned section text) |
+#                   topic_table (rows "N — label EUR amount" -> [{topic_no, label, budget_eur}])
+# field.parse date  pattern has ONE capture group = the date text; stored as ISO UTC (or YYYY-MM-DD)
+# field.pattern     regex; {EUR} expands to the shared euro-amount capture group
+# field.section(s)  restrict to these named sections; omit for the whole (sliced) text
+# field.until       topic_table only: named section where the table ends (rows may be
+#                   rendered as headings, so the table can span several Markdown sections)
+# field.until      also parse: text — join text from the start of the section to the START of the
+#                   named later section (numbered sub-criteria are Markdown headings too)
+# field.slice_from/slice_to  parse: text, NO sections — text from the first slice_from match
+#                   (inclusive) to the first slice_to match after it (or the end of the slice)
+# field.min_chars   for parse: text — reject shorter results (several sections: the existing
+#                   ones are joined; fails only if none exists or the joined text is too short)
+# field.max_chars   for parse: text — truncate at a paragraph/sentence boundary
+#
+# Budget LEVELS are kept apart on purpose: a call document states the CALL total
+# (details.call_budget_eur) and, often, a per-topic table (details.topic_budget_table);
+# a work-programme topic section states that TOPIC's budget (funding_amount).
+families:
+  call_fiche:
+    roles: [call_specific]
+    sections:
+      background: '^\s*(?:\d+\.\s*)?Background'
+      objectives:
+        - '^\s*(?:\d+\.\s*)?Objectives'
+        - '^\s*(?:\d+\.\s*)?Topics under this call'
+      budget:
+        - '^\s*(?:\d+\.\s*)?Available (?:prize )?budget'
+        - '^\s*(?:\d+\.\s*)?Prize budget'
+      timetable: '^\s*(?:\d+\.\s*)?Timetable'
+      admissibility: '^\s*(?:\d+\.\s*)?Admissibility'
+      eligibility: '^\s*(?:\d+\.\s*)?Eligibility'
+      award_criteria: '^\s*(?:\d+\.\s*)?Award criteria'
+      legal_setup: '^\s*(?:\d+\.\s*)?(?:Legal and financial set-up|How to submit)'
+      how_to_submit: '^\s*(?:\d+\.\s*)?How to submit'
+    fields:
+      call_budget_eur:
+        target: details.call_budget_eur
+        section: budget
+        pattern: 'budget\b[^.]{0,160}?\b(?:is|of)\s+{EUR}'
+        parse: eur
+      budget_statement:
+        target: details.budget_statement
+        section: budget
+        parse: text
+        min_chars: 20
+        max_chars: 600
+      topic_budget_table:
+        target: details.topic_budget_table
+        section: budget
+        until: timetable
+        parse: topic_table
+      document_deadline:
+        target: details.document_deadline
+        section: timetable
+        pattern: 'Deadline for submission\s*:\s*([^\n]{3,90})'
+        parse: date
+      document_opening_date:
+        target: details.document_opening_date
+        section: timetable
+        pattern: 'Call opening\s*:\s*([^\n]{3,90})'
+        parse: date
+      description:
+        sections: [background, objectives]
+        parse: text
+        min_chars: 200
+      document_eligibility:
+        target: details.document_eligibility
+        section: eligibility
+        parse: text
+        min_chars: 40
+        max_chars: 6000
+      document_admissibility:
+        target: details.document_admissibility
+        section: admissibility
+        parse: text
+        min_chars: 40
+        max_chars: 6000
+      document_award_criteria:
+        target: details.document_award_criteria
+        section: award_criteria
+        until: legal_setup
+        parse: text
+        min_chars: 40
+        max_chars: 6000
+      document_how_to_apply:
+        target: details.document_how_to_apply
+        section: how_to_submit
+        parse: text
+        min_chars: 40
+        max_chars: 6000
+      document_timetable:
+        target: details.document_timetable
+        section: timetable
+        parse: text
+        min_chars: 40
+        max_chars: 6000
+
+  work_programme_topic:
+    roles: [programme_level]
+    anchored: true
+    fields:
+      funding_amount:
+        pattern: 'indicative budget for the topic is\s*{EUR}'
+        parse: eur
+      budget_statement:              # the WP's own words, also when the amount is EUR 0.00 (cancelled / unallocated)
+        target: details.budget_statement
+        parse: text
+        slice_from: '(?m)^\s*Indicative budget\b'
+        slice_to: '\n\s*\n|\n\s*(?:Type of Action|Eligibility conditions|Technology Readiness|Expected Outcome|Legal and financial)\b'
+        min_chars: 20
+        max_chars: 600
+      document_specific_conditions:
+        target: details.document_specific_conditions
+        parse: text
+        slice_from: '(?m)^\s*Specific conditions\s*$'
+        slice_to: '(?m)^\s*(?:#{1,6}\s*)?[A-Z][A-Z0-9]*(?:-[A-Za-z0-9]+){2,}\s*:\s+\S'
+        min_chars: 80
+        max_chars: 8000
+
+  # EIC Work Programme (eic.ec.europa.eu): not organised by topic id. Each EIC call TYPE has its
+  # own Roman-numeral section; the first rule whose identifier matches picks the section (order
+  # matters: CHALLENGES before the generic Pathfinder/Accelerator rules). Headings are anchored
+  # (^...$) so prose such as "The EIC Strategic Technologies ... (STEP) Defence" never matches.
+  # Budgets found here are CALL totals (details.call_budget_eur), and the Accelerator's Open /
+  # Challenges allocations are CALL-TYPE budgets (details.call_type_budgets) — never a topic budget.
+  # Horizon WP call tables: "HORIZON-MSCA-2026-DN-01 628.03 24 Nov 2026" or, with one column per budget
+  # year, "HORIZON-CL6-2026-04 23.00 37.00" (EUR million, summed). Only a line that
+  # STARTS with the call id followed by whitespace and a number counts (a topic id that extends the call
+  # id, e.g. "HORIZON-NEB-2027-01-REGEN-03-", does not).
+  work_programme_call_row:
+    roles: [programme_level]
+    call_anchored: true
+    fields:
+      call_budget_eur:
+        target: details.call_budget_eur
+        pattern: '^\s*{CALL}((?:[ \t]+\d{1,4}[.,]\d{2})+)(?=\s|$)'   # one column per budget year: summed
+        parse: eur
+        unit: million
+
+  # Horizon WP call blocks: the call id on its own line, then "Opening: 07 Oct 2027" and
+  # "Deadline(s): 20 Jan 2028" before the next call id line.
+  work_programme_call_conditions:
+    roles: [programme_level]
+    call_anchored: true
+    fields:
+      document_deadline:
+        target: details.document_deadline
+        pattern: '^\s*{CALL}\s*$(?:(?!^\s*HORIZON-[A-Z0-9-]+\s*$)[\s\S]){0,2500}?^Deadline\(s\):\s*([^\n]+)'
+        parse: date
+      document_opening_date:
+        target: details.document_opening_date
+        pattern: '^\s*{CALL}\s*$(?:(?!^\s*HORIZON-[A-Z0-9-]+\s*$)[\s\S]){0,2500}?^Opening:\s*([^\n]+)'
+        parse: date
+
+  eic_work_programme:
+    roles: [programme_level]
+    anchor:
+      by_heading:
+        - {identifier: '^HORIZON-EIC-\d{4}-ACCELERATORCHALLENGES', heading: '^EIC Accelerator Challenges\s*$'}
+        - {identifier: '^HORIZON-EIC-\d{4}-ACCELERATOR', heading: '^EIC Accelerator\s*$'}
+        - {identifier: '^HORIZON-EIC-\d{4}-(STEP-)?DEFENCE', heading: '^EIC STEP Scale Up Defence'}
+        - {identifier: '^HORIZON-EIC-\d{4}-STEP', heading: '^EIC Strategic Technologies for Europe Platform'}
+        - {identifier: '^HORIZON-EIC-\d{4}-PATHFINDERCHALLENGES', heading: '^EIC Pathfinder Challenges\s*$'}
+        - {identifier: '^HORIZON-EIC-\d{4}-PATHFINDER', heading: '^EIC Pathfinder Open\s*$'}
+        - {identifier: '^HORIZON-EIC-\d{4}-TRANSITION', heading: '^EIC Transition\s*$'}
+        - {identifier: '^HORIZON-EIC-\d{4}-AIC', heading: '^EIC Advanced Innovation Challenges'}
+    fields:
+      call_budget_eur:
+        target: details.call_budget_eur
+        pattern:
+          - 'total indicative budget for this call is\s*{EUR}'
+          - 'total indicative budget for EIC [A-Za-z ]{3,40}? is\s*{EUR}'   # "... for EIC Accelerator Challenges is"
+          - 'call offers a total indicative budget of\s*{EUR}'
+          - 'comprising\s*{EUR}\s*in\s*\d{4}'            # STEP Defence: amount for the WP year
+        parse: eur
+      call_type_budgets:
+        target: details.call_type_budgets
+        parse: eur_breakdown
+        level: call_type
+        items:
+          - {label: EIC Accelerator Open, pattern: '{EUR}\s+of the total\s+indicative budget will be allocated to EIC\s+Accelerator Open'}
+          - {label: EIC Accelerator Challenges, pattern: 'Accelerator Open and\s+{EUR}\s+to EIC\s+Accelerator Challenges'}
+      budget_statement:
+        target: details.budget_statement
+        parse: text
+        slice_from: '(?:The total indicative budget for|The EIC STEP Scale Up call offers a total indicative budget)'
+        slice_to: '\n\s*\n'
+        min_chars: 20
+        max_chars: 600
+      description:
+        parse: text
+        min_chars: 200
+        max_chars: 3000

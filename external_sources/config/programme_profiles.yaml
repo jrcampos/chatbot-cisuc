@@ -1,0 +1,50 @@
+# How each programme (key from eu_programmes.yaml) documents its calls. A programme without an
+# entry uses `defaults` — the F&T call-fiche template, read by the call_fiche family.
+#
+# families   role -> [family names from document_fields.yaml]; roles missing here use `defaults`
+# classify   document-role rules, evaluated BEFORE the generic policy, first match wins. A rule
+#            has `role` plus any of `url` (regex on the URL), `text` (regex on the link text,
+#            case-insensitive), `host` (regex on the host); all given conditions must match.
+# skip       URL regexes never fetched (status skipped_policy): hosts whose robots.txt
+#            disallows automated access.
+defaults:
+  families:
+    call_specific: [call_fiche]
+    programme_level: [work_programme_topic]
+
+profiles:
+  horizon:
+    families:
+      programme_level: [work_programme_topic, eic_work_programme, work_programme_call_row, work_programme_call_conditions]
+      call_specific: [call_fiche]
+    # Joint Undertakings (EuroHPC, CHIPS, EDCTP3, IHI, CBE), prizes and the EIC publish their call
+    # documents on their own sites or as separate PDFs.
+    classify:
+      - {role: call_specific, url: '/roc_[^/]*\.pdf'}            # prize rules of contest on the F&T portal
+      - {role: call_specific, text: 'rules? of contest'}          # EDCTP3 and other prize rules
+      - {role: call_specific, host: 'ihi\.europa\.eu', url: '/Documents/Calls?'}
+      - {role: call_specific, host: 'chips-ju\.europa\.eu', url: 'CallDocumentLink'}
+      # EuroHPC JU work programme (Governing Board decisions / amendments) on the JU's own site
+      - {role: programme_level, host: 'eurohpc-ju\.europa\.eu', url: '/document/download/', text: 'work programme|decision of the governing board'}
+
+  # ---- call document hosted by an agency / the Official Journal --------------------
+  digital:
+    classify:
+      - {role: call_specific, host: 'cybersecurity-centre\.europa\.eu', text: 'call document'}
+      - {role: call_specific, host: 'chips-ju\.europa\.eu', url: 'CallDocumentLink', text: 'call document'}
+  erasmus:
+    classify:
+      - {role: call_specific, host: 'eur-lex\.europa\.eu', text: 'call document'}   # call text in the Official Journal
+      - {role: programme_level, host: 'erasmus-plus\.ec\.europa\.eu', url: 'erasmus-programme-guide|/document/'}
+  euba:
+    families: {call_specific: []}            # annexes/agreements are stored as text, no field extraction
+    classify:
+      - {role: call_specific, host: '(^|\.)efsa\.europa\.eu$', url: '/documents/'}
+
+  # ---- legacy programmes: documents live under the robots-disallowed participant portal
+  h2020: &legacy
+    families: {call_specific: [], programme_level: []}
+    skip: ['ec\.europa\.eu/research/participants/']
+  hercule: *legacy
+  ucpm: *legacy
+  rec: *legacy

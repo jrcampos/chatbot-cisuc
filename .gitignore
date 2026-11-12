@@ -93,3 +93,5 @@ Thumbs.db
 /.local
 
 CLAUDE.md
+# External sources: local working files (HTTP cache, documents, run checkpoints)
+/external_sources/output/

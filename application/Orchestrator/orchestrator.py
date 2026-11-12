@@ -5,13 +5,15 @@ This module implements the primary coordination layer for the RAG system.
 It handles:
 - Model pre-warming during startup (lifespan management).
 - Natural language query normalization and keyword extraction (via Fast SLM).
-- Coordination with the RAG API for document retrieval.
+- Source routing (CISUC knowledge base and/or EU funding calls) from the same SLM call.
+- Coordination with the RAG APIs (RAG_CISUC, RAG_CALLS) for document retrieval.
 - Streaming response generation using Heavy LLM and LangChain.
 """
 from __future__ import annotations
 import os
 import requests
 import time
+from datetime import date
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
@@ -24,11 +26,17 @@ from typing import Generator, Any, AsyncGenerator
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_openai import ChatOpenAI
 from rag_client import pesquisar_varias
+from routing import CALLS, CISUC, ROUTING_RULE, build_context, calls_key, cisuc_key, combinar, parse_targets
 
 # ===== Environment Configuration =====
 # RAG Configuration
 RAG_API_URL: str = os.environ["RAG_API_URL"]
 TOP_K: int = int(os.environ["RAG_TOP_K"])
+
+# Funding calls (RAG_CALLS). CALLS_SOURCE=off keeps the CISUC-only behaviour.
+CALLS_ENABLED: bool = os.environ["CALLS_SOURCE"].lower() == "on"
+CALLS_API_URL: str = os.environ["CALLS_API_URL"]
+CALLS_TOP_K: int = int(os.environ["CALLS_TOP_K"])
 
 # Models Configuration
 LLM_PROVIDER: str = os.environ["LLM_PROVIDER"].lower()
@@ -101,10 +109,12 @@ app.add_middleware(
 # 1. Target Extractor: Usamos o SLM Rápido aqui!
 prompt_extracao = ChatPromptTemplate.from_messages([
     ("system", "A tua tarefa é extrair as palavras-chave principais desta pergunta do utilizador para usar num motor de busca.\n"
+                + (ROUTING_RULE if CALLS_ENABLED else "") +
                 "REGRA 1: Se a pergunta contiver um NOME PRÓPRIO (ex: pessoa ou projeto), devolve APENAS esse nome.\n"
                 "REGRA 2: Se não houver nome próprio, devolve os 3 conceitos mais importantes, preferencialmente traduzidos para INGLÊS.\n"
                 "REGRA 3: Se a pergunta referenciar MAIS DE UMA entidade nomeada (ex: uma pessoa E um projeto, ou um grupo E um projeto), "
                 "devolve cada entidade separadamente, separadas por ' | ' (ex: 'João Silva | Projeto XPTO').\n"
+                "REGRA 4: Se a pergunta citar o IDENTIFICADOR de um concurso (ex: HORIZON-CL4-2027-04-DIGITAL-EMERGING-05), devolve-o exatamente.\n"
                 "Devolve APENAS o texto de pesquisa, sem aspas, sem pontuação extra e sem explicações."),
     ("human", "{pergunta}")
 ])
@@ -117,7 +127,11 @@ system_prompt = (
     "Answer the question directly when the context contains the answer. Do NOT apologize or say you lack information when the context has it.\n"
     "Questions may describe an entity indirectly (e.g. 'the researcher who works on X'): match the description against the context.\n"
     "Only if the context does not contain the answer, say 'I'm sorry, but I don't have that information in my current database.' Do NOT hallucinate or invent answers.\n"
-    "Be professional, clear, and helpful. You can answer in Portuguese or English, depending on the language of the prompt.\n\n"
+    "Be professional, clear, and helpful. You can answer in Portuguese or English, depending on the language of the prompt.\n"
+    "Today's date is {today}.\n"
+    "When you mention an EU funding call, give its identifier, status and deadline, and cite the URL from its Sources. "
+    "Only present calls that appear in the context; never invent identifiers, budgets or dates. If sources disagree "
+    "on a value, say so and give the range.\n\n"
     "Context:\n{context}"
 )
 
@@ -140,78 +154,62 @@ class QueryRequest(BaseModel):
 # Main Logic (Streaming)
 # ---------------------------------------------------------
 
-def intercalar_resultados(listas: list[list[dict[str, Any]]], limite: int) -> list[dict[str, Any]]:
-    """Round-robin merge of several RAG result lists, deduplicated, cut to `limite`.
-    Interleaving keeps every query represented after the TOP_K cut."""
-    vistos: set[tuple[str, str]] = set()
-    saida: list[dict[str, Any]] = []
-    for posicao in range(max((len(lista) for lista in listas), default=0)):
-        for lista in listas:
-            if posicao < len(lista):
-                doc = lista[posicao]
-                chave = (doc.get("metadata", {}).get("source_file", ""), doc.get("text", ""))
-                if chave not in vistos:
-                    vistos.add(chave)
-                    saida.append(doc)
-    return saida[:limite]
-
-def recuperar_contexto(pergunta: str) -> tuple[list[str], list[dict[str, Any]]]:
-    """Shared retrieval path for /chat and /chat/avaliacao (evaluation uses the same code).
-    Queries the RAG with the SLM keywords (one per entity, REGRA 3) AND with the full
-    question: keywords alone lose the descriptive part ("investigador com foco em X")."""
+def recuperar_contexto(pergunta: str) -> tuple[tuple[str, ...], list[str], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Shared retrieval path for /chat and /chat/avaliacao. Routes with the SLM source tag, then queries
+    each selected RAG with the full question AND the SLM keywords (one per entity, REGRA 3): keywords
+    alone lose the descriptive part of the question. A failing RAG call raises HTTP 502."""
     tempo_extracao_start = time.time()
     alvo_limpo = extrator_alvos.invoke({"pergunta": pergunta}).strip()
     print(f"\n[DEBUG] Alvo fixado pelo SLM: '{alvo_limpo}' (Demorou: {time.time() - tempo_extracao_start:.2f}s)")
 
-    alvos = [a.strip() for a in alvo_limpo.split("|") if a.strip()] or [alvo_limpo]
-    print(f"[DEBUG] A pedir informações à API RAG para a pergunta completa e os alvos: {alvos}")
+    fontes, alvos = parse_targets(alvo_limpo, CALLS_ENABLED)
+    print(f"[DEBUG] Fontes: {fontes} | pergunta completa + {len(alvos)} alvo(s): {alvos}")
 
-    # A failing RAG call raises HTTP 502 (rag_client.pesquisar): empty context is never silent.
-    # Results come back in query order (full question first, then the keywords).
-    resultados_pergunta, *resultados_por_alvo = pesquisar_varias([pergunta, *alvos])
+    documentos: list[dict[str, Any]] = []
+    concursos: list[dict[str, Any]] = []
+    if CISUC in fontes:
+        resultados_pergunta, *por_alvo = pesquisar_varias([pergunta, *alvos])
+        documentos = combinar(resultados_pergunta, por_alvo, TOP_K, cisuc_key)
+    if CALLS in fontes:
+        resultados_pergunta, *por_alvo = pesquisar_varias([pergunta, *alvos], url=CALLS_API_URL, top_k=CALLS_TOP_K)
+        concursos = combinar(resultados_pergunta, por_alvo, CALLS_TOP_K, calls_key)
 
-    # The full question gets half of the TOP_K slots; the keyword queries share the other half.
-    resultados_alvos = intercalar_resultados(resultados_por_alvo, TOP_K)
-    return alvos, intercalar_resultados([resultados_pergunta, resultados_alvos], TOP_K)
-
-def formatar_contexto(documentos: list[dict[str, Any]]) -> str:
     for i, doc in enumerate(documentos, 1):
         print(f"   [DOC {i}] Ficheiro: {doc['metadata'].get('source_file', 'N/A')[:50]}...")
-    return "\n\n".join(doc["text"] for doc in documentos)
+    for i, doc in enumerate(concursos, 1):
+        print(f"   [CALL {i}] {doc['metadata'].get('natural_key', 'N/A')}")
+    return fontes, alvos, documentos, concursos
 
-def gerador_streaming(
-    pergunta_utilizador: str, documentos: list[dict[str, Any]], start_time: float
-) -> Generator[str, Any, None]:
-    contexto_final = formatar_contexto(documentos)
 
-    # Stream the final response (Com o LLM Pesado)
-    print(f"[DEBUG] A gerar resposta final (Stream iniciado)...")
-
-    for chunk in gerador_resposta.stream({"context": contexto_final, "input": pergunta_utilizador}):
+def gerador_streaming(pergunta_utilizador: str, contexto_final: str, start_time: float) -> Generator[str, Any, None]:
+    print("[DEBUG] A gerar resposta final (Stream iniciado)...")
+    resposta = {"context": contexto_final, "input": pergunta_utilizador, "today": date.today().isoformat()}
+    for chunk in gerador_resposta.stream(resposta):
         yield str(chunk)
-
     print(f"\n[DEBUG] Tempo total de orquestração: {time.time() - start_time:.2f} segundos")
+
 
 @app.post("/chat", summary="Process a user question and stream the response.")
 def chat_endpoint(request: ChatRequest) -> StreamingResponse:
     start_time = time.time()
     # Retrieve BEFORE opening the stream: a RAG failure then becomes a proper HTTP 502
     # instead of a 200 whose body is cut off mid-stream.
-    _, documentos = recuperar_contexto(request.pergunta)
+    fontes, _, documentos, concursos = recuperar_contexto(request.pergunta)
     return StreamingResponse(
-        gerador_streaming(request.pergunta, documentos, start_time),
-        media_type="text/plain"
+        gerador_streaming(request.pergunta, build_context(documentos, concursos, fontes), start_time),
+        media_type="text/plain",
     )
 
 # Same pipeline as /chat, non-streamed, and it also returns the chunks the LLM saw.
 # Used by the RAGAS evaluation so contexts and answer come from one production run.
 @app.post("/chat/avaliacao", summary="Answer plus the exact contexts used (for evaluation).")
 def chat_avaliacao_endpoint(request: ChatRequest) -> dict[str, Any]:
-    alvos, documentos = recuperar_contexto(request.pergunta)
-    resposta = gerador_resposta.invoke({"context": formatar_contexto(documentos), "input": request.pergunta})
+    fontes, alvos, documentos, concursos = recuperar_contexto(request.pergunta)
+    contexto = build_context(documentos, concursos, fontes)
+    resposta = gerador_resposta.invoke({"context": contexto, "input": request.pergunta, "today": date.today().isoformat()})
     return {
         "alvos": alvos,
-        "contexts": [doc["text"] for doc in documentos],
+        "contexts": [doc["text"] for doc in documentos + concursos],
         "response": resposta,
     }
 

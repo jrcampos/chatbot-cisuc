@@ -18,6 +18,8 @@ jobs:
 
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OLLAMA_URL: ${{ secrets.OLLAMA_URL }}
+      EXTSRC_DB_PASSWORD: ${{ secrets.EXTSRC_DB_PASSWORD }}
+      EXTSRC_DB_READER_PASSWORD: ${{ secrets.EXTSRC_DB_READER_PASSWORD }}
     steps:
       - name: Check out default branch
         uses: actions/checkout@v6

@@ -45,6 +45,9 @@ services:
   rag_cisuc:
     build: !reset null
 
+  rag_calls:
+    build: !reset null
+
 networks:
   chatbot_net:
 

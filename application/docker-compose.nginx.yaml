@@ -5,7 +5,9 @@ services:
       - chatbot_net
 
   orchestrator:
-    ports: !reset []
+    # Mantém a 8002 publicada (avaliação RAGAS, scripts no host); o proxy continua a servir a GUI e /chat na 80
+    ports:
+      - "${ORCHESTRATOR_HOST_PORT:?ORCHESTRATOR_HOST_PORT must be defined}:8002"
     networks:
       - chatbot_net
 

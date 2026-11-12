@@ -391,6 +391,52 @@ def process_users_and_create_relations(
 
     return enriched_users, pd.DataFrame(relational_rows)
 
+def derive_group_project_links(
+    enriched_users: list[dict[str, Any]],
+) -> tuple[dict[str, list[tuple[str, str]]], dict[str, list[str]]]:
+    """
+    Derive group<->project associations by crossing each user's research groups
+    with their projects, since no direct group<->project link exists in the API data.
+
+    Args:
+        enriched_users: List of enriched user dictionaries.
+
+    Returns:
+        tuple: (group_to_projects mapping acronym -> [(project_id, title), ...],
+                project_to_groups mapping project_id -> [acronym, ...])
+    """
+    group_to_projects: dict[str, list[tuple[str, str]]] = {}
+    project_to_groups: dict[str, list[str]] = {}
+
+    for user in enriched_users:
+        acronyms = [
+            grupo.get('acronym', '').lower()
+            for grupo in user.get('research_groups', [])
+            if grupo.get('acronym')
+        ]
+        projetos = [
+            (proj.get('id'), proj.get('title', 'Unknown Title'))
+            for proj in user.get('projects_list', [])
+            if proj.get('id')
+        ]
+
+        if not acronyms or not projetos:
+            continue
+
+        for acronym in acronyms:
+            existing = group_to_projects.setdefault(acronym, [])
+            for entry in projetos:
+                if entry not in existing:
+                    existing.append(entry)
+
+        for p_id, _ in projetos:
+            existing_groups = project_to_groups.setdefault(p_id, [])
+            for acronym in acronyms:
+                if acronym not in existing_groups:
+                    existing_groups.append(acronym)
+
+    return group_to_projects, project_to_groups
+
 # ---------------------------------------------------------
 # Final Output Generation (Enriched)
 # ---------------------------------------------------------
@@ -399,6 +445,7 @@ def generate_enriched_markdowns(
     groups_data: dict[str, dict[str, str]],
     df_relations: pd.DataFrame,
     output_dir: Path,
+    group_to_projects: dict[str, list[tuple[str, str]]] | None = None,
 ) -> None:
     """
     Generate the final enriched Markdown files for users and research groups.
@@ -408,7 +455,9 @@ def generate_enriched_markdowns(
         groups_data: Mapping of group data and AI summaries.
         df_relations: DataFrame containing relational group/user information.
         output_dir: Directory where the generated Markdown files are written.
+        group_to_projects: Mapping of group acronym -> [(project_id, title), ...].
     """
+    group_to_projects = group_to_projects or {}
     output_dir.mkdir(
         parents=True,
         exist_ok=True,
@@ -493,6 +542,14 @@ def generate_enriched_markdowns(
             for _, row in membros.iterrows():
                 f.write(f"- **{row['User Name']}:** {row['User Description']}\n")
 
+            f.write("\n## Associated Projects\n")
+            projetos_do_grupo = group_to_projects.get(slug, [])
+            if projetos_do_grupo:
+                for _, titulo in projetos_do_grupo:
+                    f.write(f"- **{titulo}**\n")
+            else:
+                f.write("- No projects found.\n")
+
             f.write("\n## Original Content\n")
             f.write(data['content'])
 
@@ -502,6 +559,7 @@ def generate_projects_markdown(
     unique_projects: dict[str, dict[str, Any]],
     user_desc_map: dict[str, str],
     output_dir: Path,
+    project_to_groups: dict[str, list[str]] | None = None,
 ) -> None:
     """
     Generate a unified Markdown file containing all unique research projects.
@@ -510,7 +568,9 @@ def generate_projects_markdown(
         unique_projects: Mapping of project IDs to project metadata.
         user_desc_map: Mapping of user IDs to their AI-generated descriptions.
         output_dir: Directory where the generated Markdown files are written.
+        project_to_groups: Mapping of project_id -> [group acronym, ...].
     """
+    project_to_groups = project_to_groups or {}
     output_dir.mkdir(
         parents=True,
         exist_ok=True,
@@ -541,6 +601,12 @@ def generate_projects_markdown(
                     m_nome = membro.get('name', 'Unknown')
                     m_bio = user_desc_map.get(m_id, "Researcher at CISUC.")
                     f.write(f"- **{m_nome}:** {m_bio}\n")
+
+            grupos_do_projeto = project_to_groups.get(p_id, [])
+            if grupos_do_projeto:
+                f.write("\n### Research Groups Involved\n")
+                for acronym in grupos_do_projeto:
+                    f.write(f"- {acronym.upper()}\n")
 
             f.write("\n" + "-"*80 + "\n\n")
 
@@ -666,6 +732,9 @@ if __name__ == "__main__":
     # 5. Build user description map for project linking
     user_descriptions = {user.get('id', ''): user.get('short_description', 'Associated Researcher.') for user in list_enriched_users}
 
+    # 5b. Derive group<->project links (no direct field in the API data)
+    group_to_projects, project_to_groups = derive_group_project_links(list_enriched_users)
+
     # 6. Save relational CSV
     output_dir.mkdir(
         parents=True,
@@ -688,12 +757,14 @@ if __name__ == "__main__":
         groups_info,
         relations_df,
         output_dir,
+        group_to_projects,
     )
 
     generate_projects_markdown(
         all_projects,
         user_descriptions,
         output_dir,
+        project_to_groups,
     )
 
     print("\nPipeline concluído com sucesso!")

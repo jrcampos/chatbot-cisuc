@@ -113,7 +113,9 @@ extrator_alvos = prompt_extracao | slm_extrator | StrOutputParser()
 system_prompt = (
     "You are the official AI Assistant for CISUC (Centre for Informatics and Systems of the University of Coimbra).\n"
     "Your job is to answer questions using ONLY the provided context below.\n"
-    "If the context does not contain the answer, politely say 'I'm sorry, but I don't have that information in my current database.' Do NOT hallucinate or invent answers.\n"
+    "Answer the question directly when the context contains the answer. Do NOT apologize or say you lack information when the context has it.\n"
+    "Questions may describe an entity indirectly (e.g. 'the researcher who works on X'): match the description against the context.\n"
+    "Only if the context does not contain the answer, say 'I'm sorry, but I don't have that information in my current database.' Do NOT hallucinate or invent answers.\n"
     "Be professional, clear, and helpful. You can answer in Portuguese or English, depending on the language of the prompt.\n\n"
     "Context:\n{context}"
 )
@@ -137,12 +139,56 @@ class QueryRequest(BaseModel):
 # Main Logic (Streaming)
 # ---------------------------------------------------------
 
+def intercalar_resultados(listas: list[list[dict[str, Any]]], limite: int) -> list[dict[str, Any]]:
+    """Round-robin merge of several RAG result lists, deduplicated, cut to `limite`.
+    Interleaving keeps every query represented after the TOP_K cut."""
+    vistos: set[tuple[str, str]] = set()
+    saida: list[dict[str, Any]] = []
+    for posicao in range(max((len(lista) for lista in listas), default=0)):
+        for lista in listas:
+            if posicao < len(lista):
+                doc = lista[posicao]
+                chave = (doc.get("metadata", {}).get("source_file", ""), doc.get("text", ""))
+                if chave not in vistos:
+                    vistos.add(chave)
+                    saida.append(doc)
+    return saida[:limite]
+
+def recuperar_contexto(pergunta: str) -> tuple[list[str], list[dict[str, Any]]]:
+    """Shared retrieval path for /chat and /chat/avaliacao (evaluation uses the same code).
+    Queries the RAG with the SLM keywords (one per entity, REGRA 3) AND with the full
+    question: keywords alone lose the descriptive part ("investigador com foco em X")."""
+    tempo_extracao_start = time.time()
+    alvo_limpo = extrator_alvos.invoke({"pergunta": pergunta}).strip()
+    print(f"\n[DEBUG] Alvo fixado pelo SLM: '{alvo_limpo}' (Demorou: {time.time() - tempo_extracao_start:.2f}s)")
+
+    alvos = [a.strip() for a in alvo_limpo.split("|") if a.strip()] or [alvo_limpo]
+    print(f"[DEBUG] A pedir informações à API RAG para a pergunta completa e os alvos: {alvos}")
+
+    def pesquisar(consulta: str) -> list[dict[str, Any]]:
+        try:
+            resposta_api = requests.post(RAG_API_URL, json={"query": consulta, "top_k": TOP_K}, timeout=30)
+            resposta_api.raise_for_status()
+            return resposta_api.json().get("results", [])
+        except Exception as e:
+            print(f"[ERRO] Falha ao comunicar com a API RAG para '{consulta[:60]}': {e}")
+            return []
+
+    # The full question gets half of the TOP_K slots; the keyword queries share the other half.
+    resultados_pergunta = pesquisar(pergunta)
+    resultados_alvos = intercalar_resultados([pesquisar(alvo) for alvo in alvos], TOP_K)
+    return alvos, intercalar_resultados([resultados_pergunta, resultados_alvos], TOP_K)
+
+def formatar_contexto(documentos: list[dict[str, Any]]) -> str:
+    for i, doc in enumerate(documentos, 1):
+        print(f"   [DOC {i}] Ficheiro: {doc['metadata'].get('source_file', 'N/A')[:50]}...")
+    return "\n\n".join(doc["text"] for doc in documentos)
+
 def gerador_streaming(pergunta_utilizador: str) -> Generator[str, Any, None]:
     start_time = time.time()
 
-    # Step 1: Optimize the search query (Agora super rápido com o SLM)
-    tempo_extracao_start = time.time()
-    alvo_limpo = extrator_alvos.invoke({"pergunta": pergunta_utilizador}).strip()
+    _, documentos = recuperar_contexto(pergunta_utilizador)
+    contexto_final = formatar_contexto(documentos)
 
     print(f"\n[DEBUG] Alvo fixado pelo SLM: '{alvo_limpo}' (Demorou: {time.time() - tempo_extracao_start:.2f}s)")
 
@@ -187,7 +233,7 @@ def gerador_streaming(pergunta_utilizador: str) -> Generator[str, Any, None]:
 @app.post("/chat", summary="Process a user question and stream the response.")
 def chat_endpoint(request: ChatRequest) -> StreamingResponse:
     return StreamingResponse(
-        gerador_streaming(request.pergunta), 
+        gerador_streaming(request.pergunta),
         media_type="text/plain"
     )
 

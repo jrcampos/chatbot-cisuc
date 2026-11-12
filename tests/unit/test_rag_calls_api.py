@@ -19,7 +19,8 @@ for _name, _value in {"LLM_PROVIDER": "ollama", "CALLS_RETRIEVER_K_LEXICAL": "20
                       "CALLS_RRF_WEIGHT_LEXICAL": "0.6", "CALLS_RRF_WEIGHT_VECTOR": "0.4",
                       "CALLS_POOL_MULTIPLIER": "2", "CALLS_POOL_MIN_SIZE": "20", "CALLS_RERANKER_MODEL": "fake/model",
                       "CALLS_QUERY_CACHE_SIZE": "0", "CALLS_DETAILED": "1", "CALLS_DETAILED_MAX_CHARS": "4000",
-                      "RAG_REQUEST_TIMEOUT": "5", "ORCH_RAG_MAX_PARALLEL": "1"}.items():
+                      "RAG_REQUEST_TIMEOUT": "5", "ORCH_RAG_MAX_PARALLEL": "1",
+                      "RAG_API_URL": "http://rag_cisuc:8001/query", "RAG_TOP_K": "15"}.items():
     os.environ.setdefault(_name, _value)
 
 
@@ -75,24 +76,27 @@ class Resp:
         return self.payload
 
 
-class TestRagClient:
-    def test_any_failure_is_502(self, monkeypatch):
-        for outcome in (requests.ConnectionError("down"), Resp({}, 500), Resp({"no_results": []})):
-            def post(url, json, timeout, outcome=outcome):
-                if isinstance(outcome, Exception):
-                    raise outcome
-                return outcome
-            monkeypatch.setattr(rag_client.requests, "post", post)
-            with pytest.raises(HTTPException) as err:
-                rag_client.pesquisar("http://rag_calls:8003/query", "quantum", 8, 5)
-            assert err.value.status_code == 502
+class TestRagClientForCalls:
+    """The shared client (its RAG_CISUC behaviour is covered by test_rag_client.py) also serves RAG_CALLS."""
 
-    def test_results_keep_query_order_in_parallel(self, monkeypatch):
-        monkeypatch.setattr(rag_client, "MAX_PARALLEL", 3)
-        monkeypatch.setattr(rag_client.requests, "post",
-                            lambda url, json, timeout: Resp({"results": [{"text": json["query"]}]}))
-        lists = rag_client.pesquisar_varias("http://x/query", ["full question", "kw1", "kw2"], 8)
-        assert [lst[0]["text"] for lst in lists] == ["full question", "kw1", "kw2"]
+    def test_url_and_top_k_select_the_calls_service(self, monkeypatch):
+        seen = []
+
+        def post(url, json, timeout):
+            seen.append((url, json["top_k"]))
+            return Resp({"results": [{"text": json["query"]}]})
+        monkeypatch.setattr(rag_client.requests, "post", post)
+        lists = rag_client.pesquisar_varias(["full question", "kw"], url="http://rag_calls:8003/query", top_k=8)
+        assert [lst[0]["text"] for lst in lists] == ["full question", "kw"]
+        assert seen == [("http://rag_calls:8003/query", 8)] * 2
+
+    def test_calls_failure_is_502(self, monkeypatch):
+        def post(url, json, timeout):
+            raise requests.ConnectionError("down")
+        monkeypatch.setattr(rag_client.requests, "post", post)
+        with pytest.raises(HTTPException) as err:
+            rag_client.pesquisar("quantum", 5, url="http://rag_calls:8003/query", top_k=8)
+        assert err.value.status_code == 502
 
 
 @pytest.fixture

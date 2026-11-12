@@ -124,7 +124,9 @@ extrator_alvos = prompt_extracao | slm_extrator | StrOutputParser()
 system_prompt = (
     "You are the official AI Assistant for CISUC (Centre for Informatics and Systems of the University of Coimbra).\n"
     "Your job is to answer questions using ONLY the provided context below.\n"
-    "If the context does not contain the answer, politely say 'I'm sorry, but I don't have that information in my current database.' Do NOT hallucinate or invent answers.\n"
+    "Answer the question directly when the context contains the answer. Do NOT apologize or say you lack information when the context has it.\n"
+    "Questions may describe an entity indirectly (e.g. 'the researcher who works on X'): match the description against the context.\n"
+    "Only if the context does not contain the answer, say 'I'm sorry, but I don't have that information in my current database.' Do NOT hallucinate or invent answers.\n"
     "Be professional, clear, and helpful. You can answer in Portuguese or English, depending on the language of the prompt.\n"
     "Today's date is {today}.\n"
     "When you mention an EU funding call, give its identifier, status and deadline, and cite the URL from its Sources. "
@@ -153,9 +155,9 @@ class QueryRequest(BaseModel):
 # ---------------------------------------------------------
 
 def recuperar_contexto(pergunta: str) -> tuple[tuple[str, ...], list[str], list[dict[str, Any]], list[dict[str, Any]]]:
-    """Route with the SLM tag, then query each selected RAG with the full question AND the SLM
-    keywords (one per entity, REGRA 3): keywords alone lose the descriptive part of the question. 
-    A failing RAG call raises HTTP 502: never a silent empty context."""
+    """Shared retrieval path for /chat and /chat/avaliacao. Routes with the SLM source tag, then queries
+    each selected RAG with the full question AND the SLM keywords (one per entity, REGRA 3): keywords
+    alone lose the descriptive part of the question. A failing RAG call raises HTTP 502."""
     tempo_extracao_start = time.time()
     alvo_limpo = extrator_alvos.invoke({"pergunta": pergunta}).strip()
     print(f"\n[DEBUG] Alvo fixado pelo SLM: '{alvo_limpo}' (Demorou: {time.time() - tempo_extracao_start:.2f}s)")
@@ -166,10 +168,10 @@ def recuperar_contexto(pergunta: str) -> tuple[tuple[str, ...], list[str], list[
     documentos: list[dict[str, Any]] = []
     concursos: list[dict[str, Any]] = []
     if CISUC in fontes:
-        resultados_pergunta, *por_alvo = pesquisar_varias(RAG_API_URL, [pergunta, *alvos], TOP_K)
+        resultados_pergunta, *por_alvo = pesquisar_varias([pergunta, *alvos])
         documentos = combinar(resultados_pergunta, por_alvo, TOP_K, cisuc_key)
     if CALLS in fontes:
-        resultados_pergunta, *por_alvo = pesquisar_varias(CALLS_API_URL, [pergunta, *alvos], CALLS_TOP_K)
+        resultados_pergunta, *por_alvo = pesquisar_varias([pergunta, *alvos], url=CALLS_API_URL, top_k=CALLS_TOP_K)
         concursos = combinar(resultados_pergunta, por_alvo, CALLS_TOP_K, calls_key)
 
     for i, doc in enumerate(documentos, 1):
@@ -197,6 +199,19 @@ def chat_endpoint(request: ChatRequest) -> StreamingResponse:
         gerador_streaming(request.pergunta, build_context(documentos, concursos, fontes), start_time),
         media_type="text/plain",
     )
+
+# Same pipeline as /chat, non-streamed, and it also returns the chunks the LLM saw.
+# Used by the RAGAS evaluation so contexts and answer come from one production run.
+@app.post("/chat/avaliacao", summary="Answer plus the exact contexts used (for evaluation).")
+def chat_avaliacao_endpoint(request: ChatRequest) -> dict[str, Any]:
+    fontes, alvos, documentos, concursos = recuperar_contexto(request.pergunta)
+    contexto = build_context(documentos, concursos, fontes)
+    resposta = gerador_resposta.invoke({"context": contexto, "input": request.pergunta, "today": date.today().isoformat()})
+    return {
+        "alvos": alvos,
+        "contexts": [doc["text"] for doc in documentos + concursos],
+        "response": resposta,
+    }
 
 # The RAG API is not exposed outside the Docker network: retrieval queries from
 # outside (e.g. the evaluation script) go through here.

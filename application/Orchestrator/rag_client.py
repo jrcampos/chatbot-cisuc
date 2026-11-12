@@ -1,5 +1,5 @@
 """
-Client for the RAG APIs used by the Orchestrator (RAG_CISUC and RAG_CALLS).
+Client for the RAG APIs used by the Orchestrator (RAG_CISUC by default, RAG_CALLS by `url`/`top_k`).
 
 Kept separate from orchestrator.py (which builds LLM clients at import time) so the
 retrieval calls can be unit-tested on their own.
@@ -14,13 +14,15 @@ from typing import Any
 import requests
 from fastapi import HTTPException
 
+RAG_API_URL: str = os.environ["RAG_API_URL"]
+TOP_K: int = int(os.environ["RAG_TOP_K"])
 # Per-request budget (seconds) for one RAG call served on its own.
 REQUEST_TIMEOUT: float = float(os.environ["RAG_REQUEST_TIMEOUT"])
 # 1 = strictly sequential calls (original behaviour); >1 = run the queries of one question in parallel.
 MAX_PARALLEL: int = int(os.environ["ORCH_RAG_MAX_PARALLEL"])
 
 
-def pesquisar(url: str, consulta: str, top_k: int, timeout: float) -> list[dict[str, Any]]:
+def pesquisar(consulta: str, timeout: float, *, url: str = RAG_API_URL, top_k: int = TOP_K) -> list[dict[str, Any]]:
     """One RAG query. Any failure raises HTTP 502: an empty list would be indistinguishable
     from "no relevant context" and the LLM would answer (and be evaluated) without any."""
     try:
@@ -28,18 +30,18 @@ def pesquisar(url: str, consulta: str, top_k: int, timeout: float) -> list[dict[
         resposta.raise_for_status()
         return resposta.json()["results"]
     except (requests.RequestException, ValueError, KeyError) as e:
-        print(f"[ERRO] Falha ao comunicar com a API RAG ({url}) para '{consulta[:60]}': {e}")
+        print(f"[ERRO] Falha ao comunicar com a API RAG para '{consulta[:60]}': {e}")
         raise HTTPException(
             status_code=502, detail=f"RAG API indisponível para '{consulta[:60]}': {e}"
         ) from e
 
 
-def pesquisar_varias(url: str, consultas: list[str], top_k: int) -> list[list[dict[str, Any]]]:
+def pesquisar_varias(consultas: list[str], *, url: str = RAG_API_URL, top_k: int = TOP_K) -> list[list[dict[str, Any]]]:
     """Run several queries and return the result lists in the SAME order as `consultas`
     (intercalar_resultados is order-sensitive)."""
     workers = min(MAX_PARALLEL, len(consultas))
     if workers <= 1:
-        return [pesquisar(url, c, top_k, REQUEST_TIMEOUT) for c in consultas]
+        return [pesquisar(c, REQUEST_TIMEOUT, url=url, top_k=top_k) for c in consultas]
 
     # The RAG serialises the cross-encoder, so up to `workers` requests can be queued behind
     # each other. A request's wait is then at most `workers` service times: scale the timeout
@@ -47,7 +49,9 @@ def pesquisar_varias(url: str, consultas: list[str], top_k: int) -> list[list[di
     timeout = REQUEST_TIMEOUT * workers
     executor = ThreadPoolExecutor(max_workers=workers)
     try:
-        futuros = [executor.submit(pesquisar, url, c, top_k, timeout) for c in consultas]
-        return [f.result() for f in futuros]  # in submission order; first failure raises
+        futuros = [executor.submit(pesquisar, c, timeout, url=url, top_k=top_k) for c in consultas]
+        return [
+            f.result() for f in futuros
+        ]  # in submission order; first failure raises
     finally:
         executor.shutdown(wait=False, cancel_futures=True)

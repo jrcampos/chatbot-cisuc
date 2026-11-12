@@ -13,7 +13,8 @@ import json
 import os
 import time
 import pandas as pd
-from openai import OpenAI
+from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
@@ -26,25 +27,38 @@ from preprocessing.paths import (
     ensure_workspace_directories,
 )
 
-OPENAI_MODEL = os.environ["ENHANCEMENT_MODEL"]
+ENHANCEMENT_MODEL = os.environ["ENHANCEMENT_MODEL"]
+ENHANCEMENT_TEMPERATURE = 0.0
 
 MAX_WORKERS = int(
     os.environ["ENHANCEMENT_MAX_WORKERS"]
 )
 
-api_key = os.environ["OPENAI_API_KEY"]
-
-if not api_key:
-    raise RuntimeError("OPENAI_API_KEY is not set")
+LLM_PROVIDER = os.environ["LLM_PROVIDER"].strip().lower()
 
 # ---------------------------------------------------------
 # Initial Configuration
 # ---------------------------------------------------------
-client = OpenAI(api_key=api_key)
+if LLM_PROVIDER == "openai":
+    openai_api_key = os.environ["OPENAI_API_KEY"]
+    if not openai_api_key:
+        raise RuntimeError("OPENAI_API_KEY não está definida, mas LLM_PROVIDER=openai.")
+    llm_cliente = ChatOpenAI(model=ENHANCEMENT_MODEL, temperature=ENHANCEMENT_TEMPERATURE, api_key=openai_api_key)
+elif LLM_PROVIDER == "ollama":
+    ollama_url = os.environ["OLLAMA_URL"]
+    llm_cliente = ChatOllama(base_url=ollama_url, model=ENHANCEMENT_MODEL, temperature=ENHANCEMENT_TEMPERATURE, truncate=False)
+else:
+    raise ValueError(f"LLM_PROVIDER inválido: {LLM_PROVIDER!r}. Valores suportados: 'openai' ou 'ollama'.")
 
 # ---------------------------------------------------------
 # OpenAI Interaction Functions
 # ---------------------------------------------------------
+
+def _is_retryable_error(e: Exception) -> bool:
+    """Rate limits and transient connection drops (e.g. a local Ollama server
+    restarting under load) are worth retrying; anything else is not."""
+    mensagem = str(e).lower()
+    return any(s in mensagem for s in ("429", "rate limit", "disconnected", "connection", "timeout"))
 
 def generate_short_description(entity_type: str, text_content: str) -> str:
     """
@@ -60,34 +74,30 @@ def generate_short_description(entity_type: str, text_content: str) -> str:
     if not text_content or len(text_content.strip()) < 10:
         return "Insufficient information to generate description."
 
-    prompt = f"Summarize the following information about a {entity_type} in a maximum of 2 to 3 concise sentences:\n\n{text_content}"
+    prompt = f"Summarize the following information about a {entity_type} in at most 2 to 3 concise sentences (fewer if the input is short). Base the summary strictly on the information given; do not add details that are not present:\n\n{text_content}"
 
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            response = client.chat.completions.create(
-                model=OPENAI_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are an assistant specialized in summarizing academic profiles and research groups for RAG systems. Be direct and factual."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3
-            )
-            choice = response.choices[0]
-            if choice.message.content:
-                return choice.message.content.strip()
+            response = llm_cliente.invoke([
+                ("system", "You are an assistant specialized in summarizing academic profiles and research groups for RAG systems. Only use information explicitly present in the text you are given. Never invent names, affiliations, research areas, or specializations that are not stated in the input. If the input does not contain enough information, say so plainly instead of guessing. Be direct and factual."),
+                ("user", prompt)
+            ])
+            if response.content:
+                return response.content.strip()
             return "Empty response from API."
         except Exception as e:
-            if "429" in str(e) or "rate limit" in str(e).lower():
+            if _is_retryable_error(e):
                 espera = 2 ** attempt
-                print(f"Rate limit atingido. A esperar {espera} segundos antes de tentar novamente...")
+                print(f"[INFO] Erro recuperável: {e}")
+                print(f"[INFO] A tentar novamente em {espera}s (tentativa {attempt + 1}/{max_retries})...")
                 time.sleep(espera)
             else:
-                print(f"Erro na API da OpenAI: {e}")
+                print(f"Erro na API do LLM: {e}")
                 raise
 
     raise RuntimeError(
-        "OpenAI API request failed after maximum retries"
+        "LLM request failed after maximum retries"
     )
 
 def generate_research_focus(titulos_publicacoes: list[str]) -> str:
@@ -105,29 +115,26 @@ def generate_research_focus(titulos_publicacoes: list[str]) -> str:
 
     titulos_texto = "\n- ".join(titulos_publicacoes[:20])
 
-    prompt = f"Based on the following publication titles authored by a researcher, write a single concise sentence summarizing their main areas of scientific expertise and research focus:\n\n- {titulos_texto}"
+    prompt = f"Based only on the topics mentioned in the following publication titles (ignore author names, co-author initials, journal/conference venue names, and years), write a single concise sentence summarizing the researcher's main areas of scientific expertise and research focus. Do not state anything that is not supported by these titles:\n\n- {titulos_texto}"
 
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            response = client.chat.completions.create(
-                model=OPENAI_MODEL,
-                messages=[
-                    {"role": "system", "content": "You are a scientific assistant analyzing academic publications."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3
-            )
-            choice = response.choices[0]
-            if choice.message.content:
-                return choice.message.content.strip()
+            response = llm_cliente.invoke([
+                ("system", "You are a scientific assistant analyzing academic publications. Infer research focus only from the actual topics named in the publication titles. Ignore author names, venues, volume/page numbers, and years — they are not evidence of a research topic. Do not generalize beyond what the titles describe, and do not invent sub-fields or specializations that are not reflected in them."),
+                ("user", prompt)
+            ])
+            if response.content:
+                return response.content.strip()
             return "Empty response from API."
         except Exception as e:
-            if "429" in str(e) or "rate limit" in str(e).lower():
+            if _is_retryable_error(e):
                 espera = 2 ** attempt
+                print(f"[INFO] Erro recuperável: {e}")
+                print(f"[INFO] A tentar novamente em {espera}s (tentativa {attempt + 1}/{max_retries})...")
                 time.sleep(espera)
             else:
-                return "Error analyzing research focus."
+                print(f"Erro na API do LLM: {e}")
                 raise
 
     raise RuntimeError(
@@ -201,7 +208,7 @@ def process_groups(group_files_paths: list[str]) -> dict[str, dict[str, str]]:
 
         group_slug = os.path.basename(filepath).replace('.md', '')
         print(f"A gerar resumo para o grupo: {group_slug}...")
-        description = generate_short_description("Artificial Intelligence research group", content)
+        description = generate_short_description("CISUC research group", content)
 
         groups_data[group_slug] = {
             'content': content,
@@ -283,15 +290,22 @@ def process_single_user(user: dict[str, Any],
     """
     nome = user.get('name', 'Unknown')
     user_id = user.get('id', '')
-    bio = user.get('bio', '')
-    interesses = user.get('research_interests', [])
+    bio = (user.get('bio') or '').strip()
+    interesses = user.get('research_interests') or []
 
     # Generate and store aliases
     user['aliases'] = generate_name_aliases(nome)
 
-    contexto_user = f"Bio: {bio}\nInterests: {', '.join(interesses) if interesses else 'None'}"
-    user_desc = generate_short_description("university researcher/student", contexto_user)
-    user['short_description'] = user_desc
+    if not bio and not interesses:
+        user['short_description'] = "No biography or research interests available for this researcher."
+    else:
+        partes = []
+        if bio:
+            partes.append(f"Bio: {bio}")
+        if interesses:
+            partes.append(f"Interests: {', '.join(interesses)}")
+        contexto_user = "\n".join(partes)
+        user['short_description'] = generate_short_description("university researcher/student", contexto_user)
 
     pubs_agrupadas = dict_publicacoes.get(user_id, [])
     flat_pubs = get_user_items_flat(pubs_agrupadas)
@@ -391,6 +405,52 @@ def process_users_and_create_relations(
 
     return enriched_users, pd.DataFrame(relational_rows)
 
+def derive_group_project_links(
+    enriched_users: list[dict[str, Any]],
+) -> tuple[dict[str, list[tuple[str, str]]], dict[str, list[str]]]:
+    """
+    Derive group<->project associations by crossing each user's research groups
+    with their projects, since no direct group<->project link exists in the API data.
+
+    Args:
+        enriched_users: List of enriched user dictionaries.
+
+    Returns:
+        tuple: (group_to_projects mapping acronym -> [(project_id, title), ...],
+                project_to_groups mapping project_id -> [acronym, ...])
+    """
+    group_to_projects: dict[str, list[tuple[str, str]]] = {}
+    project_to_groups: dict[str, list[str]] = {}
+
+    for user in enriched_users:
+        acronyms = [
+            grupo.get('acronym', '').lower()
+            for grupo in user.get('research_groups', [])
+            if grupo.get('acronym')
+        ]
+        projetos = [
+            (proj.get('id'), proj.get('title', 'Unknown Title'))
+            for proj in user.get('projects_list', [])
+            if proj.get('id')
+        ]
+
+        if not acronyms or not projetos:
+            continue
+
+        for acronym in acronyms:
+            existing = group_to_projects.setdefault(acronym, [])
+            for entry in projetos:
+                if entry not in existing:
+                    existing.append(entry)
+
+        for p_id, _ in projetos:
+            existing_groups = project_to_groups.setdefault(p_id, [])
+            for acronym in acronyms:
+                if acronym not in existing_groups:
+                    existing_groups.append(acronym)
+
+    return group_to_projects, project_to_groups
+
 # ---------------------------------------------------------
 # Final Output Generation (Enriched)
 # ---------------------------------------------------------
@@ -399,6 +459,7 @@ def generate_enriched_markdowns(
     groups_data: dict[str, dict[str, str]],
     df_relations: pd.DataFrame,
     output_dir: Path,
+    group_to_projects: dict[str, list[tuple[str, str]]] | None = None,
 ) -> None:
     """
     Generate the final enriched Markdown files for users and research groups.
@@ -408,7 +469,9 @@ def generate_enriched_markdowns(
         groups_data: Mapping of group data and AI summaries.
         df_relations: DataFrame containing relational group/user information.
         output_dir: Directory where the generated Markdown files are written.
+        group_to_projects: Mapping of group acronym -> [(project_id, title), ...].
     """
+    group_to_projects = group_to_projects or {}
     output_dir.mkdir(
         parents=True,
         exist_ok=True,
@@ -431,7 +494,7 @@ def generate_enriched_markdowns(
             f.write(f"**ORCID:** {user.get('orcid', 'N/A')}\n")
             f.write(f"**CV:** {user.get('cv', 'N/A')}\n")
             f.write(f"**Short Description:** {user.get('short_description', 'N/A')}\n")
-            f.write(f"**Research Focus:** {user.get('ai_research_focus', 'N/A')}\n")
+            f.write(f"**Research Focus (inferred from publication titles):** {user.get('ai_research_focus', 'N/A')}\n")
 
             if user.get('laboratories'):
                 for lab in user.get('laboratories', []):
@@ -493,6 +556,14 @@ def generate_enriched_markdowns(
             for _, row in membros.iterrows():
                 f.write(f"- **{row['User Name']}:** {row['User Description']}\n")
 
+            f.write("\n## Associated Projects\n")
+            projetos_do_grupo = group_to_projects.get(slug, [])
+            if projetos_do_grupo:
+                for _, titulo in projetos_do_grupo:
+                    f.write(f"- **{titulo}**\n")
+            else:
+                f.write("- No projects found.\n")
+
             f.write("\n## Original Content\n")
             f.write(data['content'])
 
@@ -502,6 +573,7 @@ def generate_projects_markdown(
     unique_projects: dict[str, dict[str, Any]],
     user_desc_map: dict[str, str],
     output_dir: Path,
+    project_to_groups: dict[str, list[str]] | None = None,
 ) -> None:
     """
     Generate a unified Markdown file containing all unique research projects.
@@ -510,7 +582,9 @@ def generate_projects_markdown(
         unique_projects: Mapping of project IDs to project metadata.
         user_desc_map: Mapping of user IDs to their AI-generated descriptions.
         output_dir: Directory where the generated Markdown files are written.
+        project_to_groups: Mapping of project_id -> [group acronym, ...].
     """
+    project_to_groups = project_to_groups or {}
     output_dir.mkdir(
         parents=True,
         exist_ok=True,
@@ -541,6 +615,12 @@ def generate_projects_markdown(
                     m_nome = membro.get('name', 'Unknown')
                     m_bio = user_desc_map.get(m_id, "Researcher at CISUC.")
                     f.write(f"- **{m_nome}:** {m_bio}\n")
+
+            grupos_do_projeto = project_to_groups.get(p_id, [])
+            if grupos_do_projeto:
+                f.write("\n### Research Groups Involved\n")
+                for acronym in grupos_do_projeto:
+                    f.write(f"- {acronym.upper()}\n")
 
             f.write("\n" + "-"*80 + "\n\n")
 
@@ -666,6 +746,9 @@ if __name__ == "__main__":
     # 5. Build user description map for project linking
     user_descriptions = {user.get('id', ''): user.get('short_description', 'Associated Researcher.') for user in list_enriched_users}
 
+    # 5b. Derive group<->project links (no direct field in the API data)
+    group_to_projects, project_to_groups = derive_group_project_links(list_enriched_users)
+
     # 6. Save relational CSV
     output_dir.mkdir(
         parents=True,
@@ -688,12 +771,14 @@ if __name__ == "__main__":
         groups_info,
         relations_df,
         output_dir,
+        group_to_projects,
     )
 
     generate_projects_markdown(
         all_projects,
         user_descriptions,
         output_dir,
+        project_to_groups,
     )
 
     print("\nPipeline concluído com sucesso!")

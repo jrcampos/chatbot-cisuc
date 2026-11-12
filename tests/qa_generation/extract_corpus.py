@@ -61,14 +61,11 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 BASE_DIR = SCRIPT_DIR.parent.parent
 OUTPUT_DIR = SCRIPT_DIR / "corpus"
 
-# Espelha preprocessing/paths.py (WORKSPACE=.local) sem importar dali: este
-# script corre no host, onde a variável WORKSPACE que esse módulo exige não
-# está definida.
-WORKSPACE_DIR = Path(os.environ.get("WORKSPACE", BASE_DIR / ".local"))
+WORKSPACE_DIR = BASE_DIR / ".local"
 NEWS_MARKDOWN_FILE = WORKSPACE_DIR / "raw" / "news" / "markdown" / "news_combined.md"
 
-CHROMA_URL = os.environ.get("CHROMA_ANALYSIS_URL", "http://localhost:8000")
-COLLECTION_NAME = os.environ.get("CHROMA_COLLECTION", "cisuc_rag")
+CHROMA_URL = os.environ["CHROMA_ANALYSIS_URL"]
+COLLECTION_NAME = os.environ["CHROMA_COLLECTION"]
 API_BASE = f"{CHROMA_URL}/api/v2/tenants/default_tenant/databases/default_database"
 
 

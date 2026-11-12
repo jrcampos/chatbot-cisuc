@@ -23,6 +23,7 @@ import uvicorn
 from typing import Generator, Any, AsyncGenerator
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_openai import ChatOpenAI
+from rag_client import pesquisar_varias
 
 # ===== Environment Configuration =====
 # RAG Configuration
@@ -165,18 +166,12 @@ def recuperar_contexto(pergunta: str) -> tuple[list[str], list[dict[str, Any]]]:
     alvos = [a.strip() for a in alvo_limpo.split("|") if a.strip()] or [alvo_limpo]
     print(f"[DEBUG] A pedir informações à API RAG para a pergunta completa e os alvos: {alvos}")
 
-    def pesquisar(consulta: str) -> list[dict[str, Any]]:
-        try:
-            resposta_api = requests.post(RAG_API_URL, json={"query": consulta, "top_k": TOP_K}, timeout=30)
-            resposta_api.raise_for_status()
-            return resposta_api.json().get("results", [])
-        except Exception as e:
-            print(f"[ERRO] Falha ao comunicar com a API RAG para '{consulta[:60]}': {e}")
-            return []
+    # A failing RAG call raises HTTP 502 (rag_client.pesquisar): empty context is never silent.
+    # Results come back in query order (full question first, then the keywords).
+    resultados_pergunta, *resultados_por_alvo = pesquisar_varias([pergunta, *alvos])
 
     # The full question gets half of the TOP_K slots; the keyword queries share the other half.
-    resultados_pergunta = pesquisar(pergunta)
-    resultados_alvos = intercalar_resultados([pesquisar(alvo) for alvo in alvos], TOP_K)
+    resultados_alvos = intercalar_resultados(resultados_por_alvo, TOP_K)
     return alvos, intercalar_resultados([resultados_pergunta, resultados_alvos], TOP_K)
 
 def formatar_contexto(documentos: list[dict[str, Any]]) -> str:
@@ -184,10 +179,9 @@ def formatar_contexto(documentos: list[dict[str, Any]]) -> str:
         print(f"   [DOC {i}] Ficheiro: {doc['metadata'].get('source_file', 'N/A')[:50]}...")
     return "\n\n".join(doc["text"] for doc in documentos)
 
-def gerador_streaming(pergunta_utilizador: str) -> Generator[str, Any, None]:
-    start_time = time.time()
-
-    _, documentos = recuperar_contexto(pergunta_utilizador)
+def gerador_streaming(
+    pergunta_utilizador: str, documentos: list[dict[str, Any]], start_time: float
+) -> Generator[str, Any, None]:
     contexto_final = formatar_contexto(documentos)
 
     # Stream the final response (Com o LLM Pesado)
@@ -200,8 +194,12 @@ def gerador_streaming(pergunta_utilizador: str) -> Generator[str, Any, None]:
 
 @app.post("/chat", summary="Process a user question and stream the response.")
 def chat_endpoint(request: ChatRequest) -> StreamingResponse:
+    start_time = time.time()
+    # Retrieve BEFORE opening the stream: a RAG failure then becomes a proper HTTP 502
+    # instead of a 200 whose body is cut off mid-stream.
+    _, documentos = recuperar_contexto(request.pergunta)
     return StreamingResponse(
-        gerador_streaming(request.pergunta),
+        gerador_streaming(request.pergunta, documentos, start_time),
         media_type="text/plain"
     )
 

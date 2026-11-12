@@ -9,8 +9,8 @@ stages:
       size: 246
     - path: config/preprocessing.env
       hash: md5
-      md5: 81f2abfad2251bc8f75849c8678c3645
-      size: 226
+      md5: 829b220eba908d237f397daa9345da9e
+      size: 227
     - path: preprocessing
       hash: md5
       md5: 2e14abfbb9e2198ea080ec366588bf90.dir
@@ -34,11 +34,11 @@ stages:
     outs:
     - path: .local/enriched
       hash: md5
-      md5: 2ceeede9497af90fe363edc7f82bb537.dir
-      size: 5723250
+      md5: da902d11052e48063f137080c928a150.dir
+      size: 5721350
       nfiles: 9
     - path: .local/raw
       hash: md5
-      md5: 2df421cfaead0a95280730104162792a.dir
+      md5: eb03da702dd8177767d8ef4484735a44.dir
       size: 71179877
       nfiles: 83

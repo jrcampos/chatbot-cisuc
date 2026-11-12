@@ -9,15 +9,36 @@ services:
     image: ${RAG_IMAGE:?RAG_IMAGE must be defined}
     build:
       context: ./RAG_CISUC
+      args:
+        RAG_RERANKER_MODEL: ${RAG_RERANKER_MODEL:?RAG_RERANKER_MODEL must be defined}
     environment:
       CHROMA_HOST: chromadb
       CHROMA_PORT: "8000"
       RAG_MAX_RETRYS: ${RAG_MAX_RETRYS:?RAG_MAX_RETRYS must be defined}
       RAG_RETRY_DELAY: ${RAG_RETRY_DELAY:?RAG_RETRY_DELAY must be defined}
+      RAG_RERANKER_MODEL: ${RAG_RERANKER_MODEL:?RAG_RERANKER_MODEL must be defined}
+      RAG_RETRIEVER_K_BM25: ${RAG_RETRIEVER_K_BM25:?RAG_RETRIEVER_K_BM25 must be defined}
+      RAG_RETRIEVER_K_VECTOR: ${RAG_RETRIEVER_K_VECTOR:?RAG_RETRIEVER_K_VECTOR must be defined}
+      RAG_RRF_WEIGHT_BM25: ${RAG_RRF_WEIGHT_BM25:?RAG_RRF_WEIGHT_BM25 must be defined}
+      RAG_RRF_WEIGHT_VECTOR: ${RAG_RRF_WEIGHT_VECTOR:?RAG_RRF_WEIGHT_VECTOR must be defined}
+      RAG_POOL_MULTIPLIER: ${RAG_POOL_MULTIPLIER:?RAG_POOL_MULTIPLIER must be defined}
+      RAG_POOL_MIN_SIZE: ${RAG_POOL_MIN_SIZE:?RAG_POOL_MIN_SIZE must be defined}
+      RAG_QUERY_CACHE_SIZE: ${RAG_QUERY_CACHE_SIZE:?RAG_QUERY_CACHE_SIZE must be defined}
+      OMP_NUM_THREADS: ${RAG_CPUS:?RAG_CPUS must be defined}
+      MKL_NUM_THREADS: ${RAG_CPUS:?RAG_CPUS must be defined}
       LLM_PROVIDER: ${LLM_PROVIDER:?LLM_PROVIDER must be defined}
       MODEL_EMBEDDINGS: ${MODEL_EMBEDDINGS:?MODEL_EMBEDDINGS must be defined}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY must be defined}
       OLLAMA_URL: ${OLLAMA_URL:?OLLAMA_URL must be defined}
+    cpus: ${RAG_CPUS:?RAG_CPUS must be defined}
+    healthcheck:
+      # Healthy only after the cross-encoder and retrievers are warmed up (GET /health -> 200).
+      # python (no curl in the slim image); urlopen raises on 503, giving a non-zero exit.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=5)"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
     depends_on:
       - chromadb
     networks:
@@ -31,6 +52,8 @@ services:
     environment:
       RAG_API_URL: http://rag_cisuc:8001/query
       RAG_TOP_K: ${RAG_TOP_K:?RAG_TOP_K must be defined}
+      RAG_REQUEST_TIMEOUT: ${RAG_REQUEST_TIMEOUT:?RAG_REQUEST_TIMEOUT must be defined}
+      ORCH_RAG_MAX_PARALLEL: ${ORCH_RAG_MAX_PARALLEL:?ORCH_RAG_MAX_PARALLEL must be defined}
       LLM_PROVIDER: ${LLM_PROVIDER:?LLM_PROVIDER must be defined}
       LLM_TEMPERATURE: ${LLM_TEMPERATURE:?LLM_TEMPERATURE must be defined}
       MODEL_SLM: ${MODEL_SLM:?MODEL_SLM must be defined}
@@ -40,7 +63,8 @@ services:
     ports:
       - "${ORCHESTRATOR_HOST_PORT:?ORCHESTRATOR_HOST_PORT must be defined}:8002"
     depends_on:
-      - rag_cisuc
+      rag_cisuc:
+        condition: service_healthy
     networks:
       - chatbot_net
     restart: unless-stopped

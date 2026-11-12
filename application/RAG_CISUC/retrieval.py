@@ -6,20 +6,24 @@ It performs a hybrid search combining:
 - Lexical Search (BM25): Fast keyword-based retrieval using LangChain's BM25Retriever.
 - Semantic Search (Vector): context-aware retrieval using ChromaDB and Ollama embeddings.
 
-Results are fused using a Weighted Reciprocal Rank Fusion (RRF) algorithm 
-to ensure the most relevant chunks are presented to the LLM.
+Results are fused using a Weighted Reciprocal Rank Fusion (RRF) algorithm,
+then rescored by a local cross-encoder reranker to ensure the most relevant
+chunks are presented to the LLM.
 """
 from __future__ import annotations
 import chromadb
 from chromadb.api import ClientAPI
+import copy
 import os
+import threading
 import time
+from collections import OrderedDict
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 from langchain_ollama import OllamaEmbeddings
 from langchain_core.documents import Document
 from langchain_community.retrievers import BM25Retriever
-from rank_bm25 import BM25Okapi
+from sentence_transformers import CrossEncoder
 from typing import Any
 import re
 
@@ -29,6 +33,17 @@ CHROMA_HOST: str = os.environ["CHROMA_HOST"]
 CHROMA_PORT: int = int(os.environ["CHROMA_PORT"])
 MAX_RETRYS: int = int(os.environ["RAG_MAX_RETRYS"])
 RETRY_DELAY: int = int(os.environ["RAG_RETRY_DELAY"])
+
+# Retrieval Configuration
+RETRIEVER_K_BM25: int = int(os.environ["RAG_RETRIEVER_K_BM25"])
+RETRIEVER_K_VECTOR: int = int(os.environ["RAG_RETRIEVER_K_VECTOR"])
+RRF_WEIGHT_BM25: float = float(os.environ["RAG_RRF_WEIGHT_BM25"])
+RRF_WEIGHT_VECTOR: float = float(os.environ["RAG_RRF_WEIGHT_VECTOR"])
+POOL_MULTIPLIER: int = int(os.environ["RAG_POOL_MULTIPLIER"])
+POOL_MIN_SIZE: int = int(os.environ["RAG_POOL_MIN_SIZE"])
+RERANKER_MODEL: str = os.environ["RAG_RERANKER_MODEL"]
+# Max entries in the per-(query, top_k) result cache; 0 disables it.
+QUERY_CACHE_SIZE: int = int(os.environ["RAG_QUERY_CACHE_SIZE"])
 
 # Models Configuration
 LLM_PROVIDER: str = os.environ["LLM_PROVIDER"].lower()
@@ -68,8 +83,7 @@ for tentativa in range(1, MAX_RETRYS + 1):
             embedding_function=embeddings,
             collection_metadata={"hnsw:space": "cosine"}
         )
-        # Vector retriever configured with k=10 for initial candidate retrieval
-        retriever_vetorial = vector_store.as_retriever(search_kwargs={"k": 10})
+        retriever_vetorial = vector_store.as_retriever(search_kwargs={"k": RETRIEVER_K_VECTOR})
         print("[INFO] Ligação ao ChromaDB estabelecida com sucesso!")
         break
         
@@ -113,13 +127,18 @@ else:
 retriever_palavras_chave: BM25Retriever | None = None
 if docs_para_bm25:
     retriever_palavras_chave = BM25Retriever.from_documents(docs_para_bm25, preprocess_func=_tokenizar)
-    retriever_palavras_chave.k = 10
+    retriever_palavras_chave.k = RETRIEVER_K_BM25
 
 # 3. Hybrid Weights and Orchestration Ready
 retriever_weights: dict[str, float] = {
-    "bm25": 0.6,
-    "vector": 0.4,
+    "bm25": RRF_WEIGHT_BM25,
+    "vector": RRF_WEIGHT_VECTOR,
 }
+
+# Cross-encoder loaded once at import (same pattern as the embeddings). CPU-only
+# in the container; max_length caps per-pair cost on long chunks.
+print(f"[INFO] A carregar o reranker: {RERANKER_MODEL}")
+reranker = CrossEncoder(RERANKER_MODEL, max_length=512)
 print("[INFO] Motor Híbrido pronto a receber pedidos!")
 
 
@@ -129,38 +148,49 @@ def _rrf_key(doc: Document) -> str:
     return f"{doc.metadata.get('source_file', '')}::{doc.page_content}"
 
 
-def _rerank_pool(
-    candidates: list[Document],
-    query: str,
-    rrf_scores: dict[str, float],
-    top_k: int,
-) -> list[Document]:
-    """
-    Rescore a fused candidate pool with a local BM25 pass (lexical rescoring
-    against just this pool, no new ML dependency), blended 50/50 with the
-    original RRF score, to sharpen precision without discarding the semantic
-    recall vector search already contributed.
-    """
+_reranker_lock = threading.Lock()
+
+
+def _rerank_pool(candidates: list[Document], query: str, top_k: int) -> list[Document]:
+    """Score each (query, chunk) pair with the cross-encoder and keep the top_k."""
     if not candidates:
         return []
 
-    tokenized_query = query.lower().split()
-    tokenized_docs = [doc.page_content.lower().split() for doc in candidates]
-    bm25_scores = list(BM25Okapi(tokenized_docs).get_scores(tokenized_query))
-    rrf_values = [rrf_scores.get(_rrf_key(doc), 0.0) for doc in candidates]
-
-    def normalize(values: list[float]) -> list[float]:
-        lo, hi = min(values), max(values)
-        if hi - lo < 1e-9:
-            return [0.0] * len(values)
-        return [(v - lo) / (hi - lo) for v in values]
-
-    combined = [
-        0.5 * b + 0.5 * r
-        for b, r in zip(normalize(bm25_scores), normalize(rrf_values))
-    ]
-    ranked = sorted(zip(candidates, combined), key=lambda pair: pair[1], reverse=True)
+    # One predict at a time: the endpoint runs in a threadpool, and concurrent predicts
+    # only fight over the same CPU threads (same total throughput, far worse latency).
+    with _reranker_lock:
+        scores = reranker.predict([(query, doc.page_content) for doc in candidates])
+    ranked = sorted(zip(candidates, scores), key=lambda pair: float(pair[1]), reverse=True)
     return [doc for doc, _ in ranked][:top_k]
+
+
+# LRU cache of final results per (query, top_k). Hand-rolled instead of functools.lru_cache
+# because only COMPLETE results may be cached (retriever errors are swallowed in
+# get_relevant_chunks, and a partial result must never be served again) and callers
+# must get copies. Invalidated only by restart, like the BM25 index built at startup.
+_query_cache: OrderedDict[tuple[str, int], list[dict[str, Any]]] = OrderedDict()
+_query_cache_lock = threading.Lock()
+
+
+def _cache_get(key: tuple[str, int]) -> list[dict[str, Any]] | None:
+    if QUERY_CACHE_SIZE <= 0:
+        return None
+    with _query_cache_lock:
+        hit = _query_cache.get(key)
+        if hit is not None:
+            _query_cache.move_to_end(key)
+    return copy.deepcopy(hit) if hit is not None else None
+
+
+def _cache_put(key: tuple[str, int], resultados: list[dict[str, Any]]) -> None:
+    if QUERY_CACHE_SIZE <= 0:
+        return
+    entry = copy.deepcopy(resultados)
+    with _query_cache_lock:
+        _query_cache[key] = entry
+        _query_cache.move_to_end(key)
+        while len(_query_cache) > QUERY_CACHE_SIZE:
+            _query_cache.popitem(last=False)
 
 
 def get_relevant_chunks(query: str, top_k: int = 15) -> list[dict[str, Any]]:
@@ -181,6 +211,14 @@ def get_relevant_chunks(query: str, top_k: int = 15) -> list[dict[str, Any]]:
     # 1. Clean and normalize query
     query = query.replace("'", "").replace('"', "").strip()
     print(f"\n[RAG DEBUG] A procurar a query: '{query}'")
+
+    cache_key = (query, top_k)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        print(f"[RAG DEBUG] cache HIT ({len(cached)} documentos).")
+        return cached
+    # Only a run where every retriever answered without error may be cached.
+    completo = True
     
     # 2. Execute retrievers in parallel (lexical)
     bm25_docs: list[Document] = []
@@ -189,7 +227,10 @@ def get_relevant_chunks(query: str, top_k: int = 15) -> list[dict[str, Any]]:
             bm25_docs = retriever_palavras_chave.invoke(query)
             print(f"[RAG DEBUG] BM25 encontrou: {len(bm25_docs)} docs.")
         except Exception as e:
+            completo = False
             print(f"[ERRO BM25] {e}")
+    else:
+        completo = False
 
     # 3. Execute retrievers in parallel (semantic)
     vector_docs: list[Document] = []
@@ -198,7 +239,10 @@ def get_relevant_chunks(query: str, top_k: int = 15) -> list[dict[str, Any]]:
             vector_docs = retriever_vetorial.invoke(query)
             print(f"[RAG DEBUG] Vetores (Cosseno) encontrou: {len(vector_docs)} docs.")
         except Exception as e:
+            completo = False
             print(f"[ERRO VETORES] {e}")
+    else:
+        completo = False
 
     # 4. Score Fusion (Weighted RRF)
     scores: dict[str, dict[str, Any]] = {}
@@ -215,18 +259,18 @@ def get_relevant_chunks(query: str, top_k: int = 15) -> list[dict[str, Any]]:
     apply_rrf(bm25_docs, retriever_weights["bm25"])
     apply_rrf(vector_docs, retriever_weights["vector"])
 
-    # 5. Widen the pool past RRF, then rescore lexically against the query to
-    # sharpen precision (the right chunk is usually in the RRF pool, just
-    # buried in noise - see ragas_evaluation_report.md).
+    # 5. Widen the pool past RRF, then rerank semantically with the cross-encoder.
     sorted_entries = sorted(scores.values(), key=lambda x: x["score"], reverse=True)
-    pool_size = max(top_k * 2, 20)
-    pool_entries = sorted_entries[:pool_size]
-    rrf_scores = {_rrf_key(entry["doc"]): entry["score"] for entry in pool_entries}
-    pool_docs = [entry["doc"] for entry in pool_entries]
+    pool_size = max(top_k * POOL_MULTIPLIER, POOL_MIN_SIZE)
+    pool_docs = [entry["doc"] for entry in sorted_entries[:pool_size]]
 
-    top_docs = _rerank_pool(pool_docs, query, rrf_scores, top_k)
+    rerank_start = time.time()
+    top_docs = _rerank_pool(pool_docs, query, top_k)
 
-    print(f"[RAG DEBUG] RRF + Rescoring retornaram: {len(top_docs)} documentos (pool: {len(pool_docs)}).")
+    print(
+        f"[RAG DEBUG] RRF + Reranking retornaram: {len(top_docs)} documentos "
+        f"(pool: {len(pool_docs)}, rerank: {time.time() - rerank_start:.2f}s)."
+    )
 
     # 6. Format results for JSON serialization
     resultados: list[dict[str, Any]] = []
@@ -235,5 +279,11 @@ def get_relevant_chunks(query: str, top_k: int = 15) -> list[dict[str, Any]]:
             "text": doc.page_content,
             "metadata": getattr(doc, "metadata", {}) or {}
         })
+
+    if completo and resultados:
+        _cache_put(cache_key, resultados)
+        print("[RAG DEBUG] cache MISS (guardado).")
+    else:
+        print("[RAG DEBUG] resultado incompleto ou vazio: não guardado em cache.")
 
     return resultados

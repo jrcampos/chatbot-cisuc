@@ -5,8 +5,8 @@ stages:
     deps:
     - path: config/chatbot-common.env
       hash: md5
-      md5: fa4cc5ab8f5753757c8f03a2a60660d3
-      size: 199
+      md5: 30ebab01eef614bb42be88a6e14a3ac2
+      size: 246
     - path: config/preprocessing.env
       hash: md5
       md5: 527cdb964f294617b5c8a0e94154bed3
@@ -34,11 +34,11 @@ stages:
     outs:
     - path: .local/enriched
       hash: md5
-      md5: 25828a6c1b59dd0e7fc5146aa02e8fc0.dir
-      size: 5696758
+      md5: 9c17280d5bdf2cc5922b96592689c1f5.dir
+      size: 5715262
       nfiles: 9
     - path: .local/raw
       hash: md5
-      md5: 72909fd7c07e9ae21da60b83a844ec51.dir
-      size: 71065787
+      md5: fa856bde63f7a99492ae398350815ad5.dir
+      size: 71120632
       nfiles: 83

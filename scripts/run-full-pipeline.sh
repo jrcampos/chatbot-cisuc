@@ -32,23 +32,13 @@ run_phase() {
   echo "==> $nome — fim $(date '+%Y-%m-%d %H:%M:%S') (durou $(fmt_dur "$dur"))"
 }
 
-# SKIP_PREPROCESSING=true salta a fase 1 e reutiliza o Chroma/artefactos ja existentes
-# (util para comparar so a recuperacao/avaliacao sem mudar o corpus).
-SKIP_PREPROCESSING="${SKIP_PREPROCESSING:-false}"
-
-SECRETS=(secrets/chatbot.env secrets/chatbot-common.env secrets/evaluation.env)
-[[ "$SKIP_PREPROCESSING" == "true" ]] || SECRETS+=(secrets/preprocessing.env)
-for f in "${SECRETS[@]}"; do
+for f in secrets/chatbot.env secrets/chatbot-common.env secrets/preprocessing.env secrets/evaluation.env; do
   [[ -f "$f" ]] || { echo "Falta $f (secrets locais, não versionados) — copia-o para este PC antes de continuar." >&2; exit 1; }
 done
 
 PIPELINE_INICIO=$SECONDS
 
-if [[ "$SKIP_PREPROCESSING" == "true" ]]; then
-  echo "SKIP_PREPROCESSING=true: fase 1/4 (preprocessing) ignorada; a reutilizar os artefactos existentes."
-else
-  run_phase "1/4 Preprocessing (containers, ingestao, enriquecimento, embeddings, finalizacao)" ./scripts/run-full-processing.sh
-fi
+run_phase "1/4 Preprocessing (containers, ingestao, enriquecimento, embeddings, finalizacao)" ./scripts/run-full-processing.sh
 
 run_phase "2/4 Aplicacao (build + up)" ./scripts/run-application.sh up-build application/docker-compose.nginx.yaml
 

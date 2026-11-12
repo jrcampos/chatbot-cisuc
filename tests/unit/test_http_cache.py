@@ -6,9 +6,10 @@ detail enrichment and document capture.
 import json
 import time
 
+import pytest
 import requests
 
-from external_sources.http_cache import USER_AGENT, CachedFetcher
+from external_sources.http_cache import USER_AGENT, CachedFetcher, check_public_url
 
 
 class FakeResponse:
@@ -45,7 +46,7 @@ class FakeSession:
         self.responses = list(responses)
         self.calls: list[dict] = []
 
-    def get(self, url, headers=None, timeout=None, stream=False):
+    def get(self, url, headers=None, timeout=None, stream=False, allow_redirects=True):
         self.calls.append({"url": url, "headers": dict(headers or {}), "stream": stream})
         item = self.responses.pop(0)
         if isinstance(item, Exception):
@@ -56,6 +57,7 @@ class FakeSession:
 def fetcher(tmp_path, *responses, **kwargs):
     """Build a CachedFetcher over a fake session with no throttling."""
     session = FakeSession(*responses)
+    kwargs.setdefault("url_check", None)  # fake hosts are not resolvable
     return CachedFetcher(tmp_path, session=session, min_interval=0, **kwargs), session
 
 
@@ -395,3 +397,44 @@ class TestCorruptMetadata:
         result = f.get(URL)
 
         assert result.status == "fresh" and result.body == b"NEW"
+
+
+class TestPublicUrlGuard:
+    """SSRF guard: call texts can carry any link; the loader runs inside the app network."""
+
+    @staticmethod
+    def resolve_to(monkeypatch, address):
+        import external_sources.http_cache as hc
+        monkeypatch.setattr(hc.socket, "getaddrinfo", lambda *a, **k: [(2, 1, 6, "", (address, 443))])
+
+    @pytest.mark.parametrize("address", ["127.0.0.1", "10.3.1.8", "172.18.0.4", "169.254.169.254", "::1"])
+    def test_non_public_addresses_are_blocked(self, monkeypatch, address):
+        self.resolve_to(monkeypatch, address)
+        assert "non-public" in check_public_url("http://calls_db:5432/")
+
+    def test_public_address_is_allowed(self, monkeypatch):
+        self.resolve_to(monkeypatch, "147.67.34.30")
+        assert check_public_url("https://ec.europa.eu/doc.pdf") is None
+
+    @pytest.mark.parametrize("url", ["file:///etc/passwd", "ftp://ec.europa.eu/x", "https:///nohost"])
+    def test_other_schemes_and_missing_host_are_blocked(self, url):
+        assert check_public_url(url).startswith("blocked URL")
+
+    def test_blocked_url_is_never_requested_nor_served_from_cache(self, tmp_path):
+        f, session = fetcher(tmp_path, url_check=lambda url: "blocked URL (test)")
+        result = f.get("http://chromadb:8000/api/v1/collections")
+        assert result.status == "error" and result.body is None and session.calls == []
+
+    def test_redirect_to_a_blocked_host_is_not_followed(self, tmp_path):
+        check = lambda url: "blocked URL (internal)" if "internal" in url else None  # noqa: E731
+        f, session = fetcher(tmp_path, FakeResponse(302, headers={"Location": "http://internal:8000/"}),
+                             url_check=check)
+        result = f.get("https://ec.europa.eu/doc.pdf")
+        assert result.status == "error" and "internal" in result.error and len(session.calls) == 1
+
+    def test_allowed_redirect_is_followed(self, tmp_path):
+        f, session = fetcher(tmp_path, FakeResponse(301, headers={"Location": "/new.pdf"}),
+                             FakeResponse(200, b"%PDF", {"Content-Type": "application/pdf"}))
+        assert f.get("https://ec.europa.eu/old.pdf").status == "fresh"
+        assert [c["url"] for c in session.calls] == ["https://ec.europa.eu/old.pdf", "https://ec.europa.eu/new.pdf"]
+

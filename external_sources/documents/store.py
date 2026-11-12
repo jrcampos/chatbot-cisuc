@@ -30,7 +30,7 @@ class DocumentStore:
     @staticmethod
     def doc_id_for(url: str) -> str:
         """Stable document id derived from the URL."""
-        return hashlib.sha1(url.encode("utf-8")).hexdigest()[:16]
+        return hashlib.sha1(url.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
 
     def save(self, url: str, markdown: str, meta: dict[str, Any]) -> str:
         """Write the Markdown and its metadata; returns the doc_id."""

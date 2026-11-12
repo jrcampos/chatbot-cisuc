@@ -156,5 +156,3 @@ class SourcePlugin(ABC):
         return FetchOutcome(list(records), list(self.failures), list(self.partial_reasons))
 
 
-class MissingAPIKeyError(RuntimeError):
-    """Raised when a plugin needs an API key that isn't set in the environment."""

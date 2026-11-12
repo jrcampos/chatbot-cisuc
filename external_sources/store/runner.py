@@ -51,7 +51,6 @@ from external_sources.store.batch import LoadBatch
 from external_sources.store.checkpoint import (
     CheckpointWriter,
     RunDir,
-    list_runs,
     pending_batches,
     prune_run_dirs,
     read_json,
@@ -473,5 +472,3 @@ def default_enricher_factory(source: str, runner: Runner) -> Any:
                     profiles)
 
 
-def latest_runs(work: Path, limit: int = 5) -> list[dict[str, Any]]:
-    return [run.state() for run in list_runs(work)[-limit:]]

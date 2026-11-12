@@ -20,7 +20,7 @@ Raw results are prepared through a declarative field spec
 (ISO dates, cleaned text, derived status, `details` extras) or explicitly
 ignored, and the untouched payload stays in `raw`.
 
-Detail enrichment: when built with `FTPortalPlugin.with_detail(cache_dir)`,
+Detail enrichment: when the runner sets `detail_enricher` (sources with `with_detail`),
 every in-scope call is also looked up on the per-call detail endpoint (config
 `detail:` block; conditional-GET cached). Its payload is injected as a `detail`
 raw key and mapped by the spec (the payload is first normalised into the search
@@ -46,7 +46,7 @@ import requests
 import yaml
 
 from external_sources.enrichment.detail import DetailEnricher
-from external_sources.http_cache import USER_AGENT, CachedFetcher
+from external_sources.http_cache import USER_AGENT
 from external_sources.normalization import apply_spec, dedupe_by_natural_key, load_spec
 from external_sources.normalization.transforms import first, strip
 from external_sources.plugins.base import Failure, NormalizedRecord, SourcePlugin
@@ -125,20 +125,13 @@ class FTPortalPlugin(SourcePlugin):
         self.discover_all = discover_all
         self._sleep = sleep
         self._http = http or RetryingHTTP(
-            lambda method, url, **kw: requests.post(url, **kw),
+            lambda method, url, **kw: requests.post(url, **kw),  # nosec B113: RetryingHTTP sets the timeout
             RetryPolicy(max_attempts=4, base_delay=2.0, max_delay=60.0), sleep=sleep,
         )
         self.failures: list[Failure] = []
         self.partial_reasons: list[str] = []
         self.programme_labels: dict[str, str] = {}
 
-    @classmethod
-    def with_detail(cls, cache_dir: str | Path, **kwargs: Any) -> FTPortalPlugin:
-        """Build a plugin that also enriches every in-scope call from the detail endpoint."""
-        plugin = cls(**kwargs)
-        if plugin.detail_config:
-            plugin.detail_enricher = DetailEnricher(CachedFetcher(cache_dir), **plugin.detail_config)
-        return plugin
 
     def _build_query(self, programme_id: str, status_codes: list[str]) -> dict[str, Any]:
         """
@@ -403,19 +396,6 @@ class FTPortalPlugin(SourcePlugin):
             )
         return self._check_required(rebuilt)
 
-    def build_records(
-        self, results: list[dict[str, Any]], programme_label: str, enrich: bool = True
-    ) -> list[NormalizedRecord]:
-        """
-        Convert raw search results to records without the scope filter or
-        de-duplication (used by validation tooling, e.g. for closed topics).
-        With `enrich` and a detail enricher, applies the same detail
-        enrichment as fetch().
-        """
-        records = [self._record_from_result(r, programme_label) for r in results]
-        if enrich and self.detail_enricher is not None:
-            records = self._add_detail(records)
-        return records
 
     def fetch(self) -> list[NormalizedRecord]:
         """

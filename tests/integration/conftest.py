@@ -72,7 +72,8 @@ def pg_server() -> Iterator[dict[str, Any]]:
                          .format(psycopg.sql.Literal(reader_password)))
         env = {"EXTSRC_DB_HOST": "127.0.0.1", "EXTSRC_DB_PORT": str(port), "EXTSRC_DB_NAME": "extsrc_test",
                "EXTSRC_DB_USER": "extsrc_test", "EXTSRC_DB_PASSWORD": password,
-               "EXTSRC_DB_READER_USER": "extsrc_chatbot", "EXTSRC_DB_READER_PASSWORD": reader_password}
+               "EXTSRC_DB_READER_USER": "extsrc_chatbot", "EXTSRC_DB_READER_PASSWORD": reader_password,
+               "EXTSRC_DB_LOAD_TIMEOUT_MS": "600000", "EXTSRC_DB_READER_STATEMENT_TIMEOUT_MS": "5000"}
         yield {"container": container, "port": port, "env": env}
     finally:
         _docker("stop", container, timeout=120)

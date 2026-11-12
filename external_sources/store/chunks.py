@@ -1,8 +1,8 @@
 """
 Section-aware chunking of stored documents (Markdown from documents/convert.py).
 
-Chunks follow the heading tree first (meeting decision: "documents are chunked by section, not
-fixed-size windows over 1M characters"); a section longer than `max_chars` is split on paragraph
+Chunks follow the heading tree first (sections, not fixed-size windows); a section longer than
+`max_chars` is split on paragraph
 boundaries, and a paragraph longer than that on sentence boundaries. Each chunk keeps its heading
 and the PDF page range read from the `<!-- page N -->` markers, so every passage stays citable.
 """

@@ -1,21 +1,12 @@
-# One profile per programme in eu_programmes.yaml (keyed by the same keys).
-# A profile says HOW this programme's calls are documented and which extraction
-# families (config/document_fields.yaml) read each document role. It is the
-# per-programme extractor: structure learnt from the live calls plus a stratified
-# sample of closed calls (see MEETING-NOTES / validation report).
+# How each programme (key from eu_programmes.yaml) documents its calls. A programme without an
+# entry uses `defaults` — the F&T call-fiche template, read by the call_fiche family.
 #
-# profile.extractor   name of the extraction strategy (grouping + reporting)
-# profile.families    role -> [family names]; roles missing here use `defaults`
-# profile.classify    document-role rules, evaluated BEFORE the generic policy,
-#                     first match wins. A rule has `role` plus any of:
-#                     `url` (regex searched in the URL), `text` (regex searched in
-#                     the link text, case-insensitive), `host` (regex on the host).
-#                     All given conditions must match.
-# profile.skip        URL regexes that are never fetched (status skipped_policy):
-#                     hosts that disallow automated access via robots.txt.
-# profile.expect      what the validation report expects for this programme:
-#                     call_specific / programme_level (true|false) — documents of
-#                     that role should exist for most calls; budget_table (true|false).
+# families   role -> [family names from document_fields.yaml]; roles missing here use `defaults`
+# classify   document-role rules, evaluated BEFORE the generic policy, first match wins. A rule
+#            has `role` plus any of `url` (regex on the URL), `text` (regex on the link text,
+#            case-insensitive), `host` (regex on the host); all given conditions must match.
+# skip       URL regexes never fetched (status skipped_policy): hosts whose robots.txt
+#            disallows automated access.
 defaults:
   families:
     call_specific: [call_fiche]
@@ -23,13 +14,11 @@ defaults:
 
 profiles:
   horizon:
-    extractor: horizon_work_programme
     families:
       programme_level: [work_programme_topic, eic_work_programme, work_programme_call_row, work_programme_call_conditions]
       call_specific: [call_fiche]
     # Joint Undertakings (EuroHPC, CHIPS, EDCTP3, IHI, CBE), prizes and the EIC publish their call
-    # documents on their own sites or as separate PDFs: classified here, extracted by the
-    # call_fiche family when they follow the F&T template, kept as retrievable text otherwise.
+    # documents on their own sites or as separate PDFs.
     classify:
       - {role: call_specific, url: '/roc_[^/]*\.pdf'}            # prize rules of contest on the F&T portal
       - {role: call_specific, text: 'rules? of contest'}          # EDCTP3 and other prize rules
@@ -37,63 +26,25 @@ profiles:
       - {role: call_specific, host: 'chips-ju\.europa\.eu', url: 'CallDocumentLink'}
       # EuroHPC JU work programme (Governing Board decisions / amendments) on the JU's own site
       - {role: programme_level, host: 'eurohpc-ju\.europa\.eu', url: '/document/download/', text: 'work programme|decision of the governing board'}
-    expect: {programme_level: true, call_specific: false, budget_table: false}
-
-  # ---- F&T-hosted call fiche programmes -------------------------------------------
-  life:      {extractor: call_fiche, expect: {call_specific: true, budget_table: true}}
-  edf:       {extractor: call_fiche, expect: {call_specific: true, budget_table: true}}
-  isf:       {extractor: call_fiche, expect: {call_specific: true, budget_table: true}}
-  crea:      {extractor: call_fiche, expect: {call_specific: true, budget_table: true}}
-  cerv:      {extractor: call_fiche, expect: {call_specific: true, budget_table: true}}
-  cef:       {extractor: call_fiche, expect: {call_specific: true, budget_table: false}}
-  amif:      {extractor: call_fiche, expect: {call_specific: true, budget_table: false}}
-  eu4h:      {extractor: call_fiche, expect: {call_specific: true, budget_table: true}}
-  emfaf:     {extractor: call_fiche, expect: {call_specific: true, budget_table: true}}
-  rfcs:      {extractor: call_fiche, expect: {call_specific: true, budget_table: false}}
-  innovfund: {extractor: call_fiche, expect: {call_specific: true, budget_table: false}}
-  i3:        {extractor: call_fiche, expect: {call_specific: true, budget_table: false}}
-  imcap:     {extractor: call_fiche, expect: {call_specific: true, budget_table: false}}
-  smp:       {extractor: call_fiche, expect: {call_specific: true, budget_table: false}}
-  pppa:      {extractor: call_fiche, expect: {call_specific: true, budget_table: false}}
 
   # ---- call document hosted by an agency / the Official Journal --------------------
   digital:
-    extractor: call_fiche_agency_hosted
-    expect: {call_specific: true, budget_table: false}
     classify:
       - {role: call_specific, host: 'cybersecurity-centre\.europa\.eu', text: 'call document'}
       - {role: call_specific, host: 'chips-ju\.europa\.eu', url: 'CallDocumentLink', text: 'call document'}
   erasmus:
-    extractor: erasmus_official_journal
-    expect: {call_specific: true, budget_table: false}
     classify:
       - {role: call_specific, host: 'eur-lex\.europa\.eu', text: 'call document'}   # call text in the Official Journal
       - {role: programme_level, host: 'erasmus-plus\.ec\.europa\.eu', url: 'erasmus-programme-guide|/document/'}
   euba:
-    extractor: efsa_hosted_documents
     families: {call_specific: []}            # annexes/agreements are stored as text, no field extraction
-    expect: {call_specific: true, budget_table: false}
     classify:
       - {role: call_specific, host: '(^|\.)efsa\.europa\.eu$', url: '/documents/'}
 
   # ---- legacy programmes: documents live under the robots-disallowed participant portal
-  h2020:
-    extractor: legacy_api_only
+  h2020: &legacy
     families: {call_specific: [], programme_level: []}
     skip: ['ec\.europa\.eu/research/participants/']
-    expect: {call_specific: false, programme_level: false, budget_table: false}
-  hercule:
-    extractor: legacy_api_only
-    families: {call_specific: [], programme_level: []}
-    skip: ['ec\.europa\.eu/research/participants/']
-    expect: {call_specific: false, programme_level: false, budget_table: false}
-  ucpm:
-    extractor: legacy_api_only
-    families: {call_specific: [], programme_level: []}
-    skip: ['ec\.europa\.eu/research/participants/']
-    expect: {call_specific: false, programme_level: false, budget_table: false}
-  rec:
-    extractor: legacy_api_only
-    families: {call_specific: [], programme_level: []}
-    skip: ['ec\.europa\.eu/research/participants/']
-    expect: {call_specific: false, programme_level: false, budget_table: false}
+  hercule: *legacy
+  ucpm: *legacy
+  rec: *legacy

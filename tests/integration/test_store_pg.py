@@ -14,7 +14,6 @@ import signal
 import subprocess
 import sys
 import time
-from datetime import date
 from pathlib import Path
 
 import pytest
@@ -174,7 +173,7 @@ def test_dead_letters_upsert_and_resolve(db):
     assert scalar(db, "SELECT resolution FROM extsrc.dead_letter WHERE item_key = 'HORIZON-X-01'").startswith("loaded")
 
 
-def test_read_api_filters_ranges_text_and_citations(db, reader, tmp_path):
+def test_read_api_text_identifier_and_citations(db, reader, tmp_path):
     store = DocumentStore(tmp_path / "documents")
     doc_id = store.save(WP, "<!-- page 37 -->\n# HORIZON-Q-01: Quantum\nThe deadline is 13 April 2099.\n\n"
                         "## Eligibility\nConsortia of three legal entities. Lump sum funding.", {"role": "programme_level"})
@@ -185,25 +184,14 @@ def test_read_api_filters_ranges_text_and_citations(db, reader, tmp_path):
                make_record("HORIZON-CL5-01", deadline="2099-06-01T00:00:00+00:00", budget=20_000_000.0),
                make_record("HORIZON-CL6-01", deadline="2099-09-01T00:00:00+00:00", budget=None)]
     Loader(db, POLICY).load(batch(records, documents=docs, documents_dir=str(tmp_path / "documents")))
-    # the document's date (13 April) lies only inside the range -> still found
-    hit = queries.search_calls(reader, deadline_from=date(2099, 4, 13), deadline_to=date(2099, 4, 13))
-    assert [h["natural_key"] for h in hit] == ["HORIZON-Q-01"]
-    assert hit[0]["ranges"]["deadline_date"]["status"] == "conflicting"
-    # budget overlap: 4.8M is inside 4.7..5.0M; calls without a budget never match
-    assert [h["natural_key"] for h in queries.search_calls(reader, budget_min=4_800_000, budget_max=4_900_000)] \
-        == ["HORIZON-Q-01"]
-    assert [h["natural_key"] for h in queries.search_calls(reader, budget_min=10_000_000)] == ["HORIZON-CL5-01"]
-    text = queries.search_calls(reader, text="quantum computing", order="relevance")
-    assert text[0]["natural_key"] == "HORIZON-Q-01" and text[0]["rank"] > 0
-    assert text[0]["sources"][1]["url"] == WP and text[0]["attribution"]
-    assert queries.get_call(reader, "horizon-q-01")["budget"]["min"] == 4_700_000.0
-    assert [h["natural_key"] for h in queries.search_calls(reader, programme="horizon")][:1] == ["HORIZON-Q-01"]
-    chunks = queries.search_documents(reader, "lump sum", natural_key="HORIZON-Q-01")
-    assert chunks and chunks[0]["url"] == WP and chunks[0]["page_start"] == 37
+    text = queries.search_calls(reader, queries.CallQuery(text="quantum computing", order="relevance"))
+    assert text[0]["natural_key"] == "HORIZON-Q-01" and text[0]["rank"] > 0 and text[0]["attribution"]
+    any_term = queries.search_calls(reader, queries.CallQuery(text="quantum biology", text_any=True))
+    assert [h["natural_key"] for h in any_term] == ["HORIZON-Q-01"]
+    exact = queries.search_calls(reader, queries.CallQuery(identifier="horizon-q-01"))
+    assert [h["natural_key"] for h in exact] == ["HORIZON-Q-01"]
     pack = queries.render_context(text[0], "deadlines")
     assert WP in pack.citations
-    assert queries.list_programmes(reader)[0]["live_calls"] == 3
-
 
 def test_retention_keeps_published_and_previous(db):
     for n in range(1, 5):

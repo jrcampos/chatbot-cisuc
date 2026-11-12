@@ -1,6 +1,4 @@
 # How a call is turned into model context. Sizes are CHARACTERS (≈4 per token).
-# Measured on the 533 live calls: card ≈ 260 chars, description median 4.7k,
-# conditions median 3.5k, whole record median 21.5k.
 default_max_chars: 6000
 truncation_marker: " … [truncated — full text: {url}]"
 

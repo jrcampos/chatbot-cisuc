@@ -58,7 +58,8 @@ def call_with(urls):
 def pipeline(tmp_path, routes, max_bytes=60_000_000):
     session = ResilientSession(RetryPolicy(max_attempts=3, base_delay=0), sleep=lambda s: None,
                                transport=transport(routes))
-    fetcher = CachedFetcher(tmp_path / "cache", session=session, min_interval=0, max_bytes=max_bytes)
+    fetcher = CachedFetcher(tmp_path / "cache", session=session, min_interval=0, max_bytes=max_bytes,
+                            url_check=None)
     return DocumentPipeline(fetcher, DocumentStore(tmp_path / "docs"), load_policy())
 
 
@@ -116,6 +117,6 @@ def test_open_circuit_serves_the_stored_copy_without_a_request(tmp_path):
     session = ResilientSession(RetryPolicy(max_attempts=1), sleep=lambda s: None, transport=down)
     for _ in range(5):  # trip the breaker for the host
         session.http.breakers.get("ec.europa.eu").record_failure()
-    fetcher = CachedFetcher(tmp_path / "cache", session=session, min_interval=0)
+    fetcher = CachedFetcher(tmp_path / "cache", session=session, min_interval=0, url_check=None)
     docs = DocumentPipeline(fetcher, DocumentStore(tmp_path / "docs"), load_policy()).process(call_with([url]))
     assert docs[0].status == "stale" and "circuit open" in docs[0].error and calls == []

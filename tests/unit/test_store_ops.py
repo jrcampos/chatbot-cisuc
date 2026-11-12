@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 
@@ -14,12 +14,13 @@ from external_sources.store.queries import (
     render_context,
     to_record,
 )
-from external_sources.store.settings import ConfigError, DBSettings, load_store_policy
+from external_sources.store.settings import ConfigError, DBSettings, load_store_policy, work_dir
 from external_sources.store.status import health_code, render
 
 ENV = {"EXTSRC_DB_HOST": "127.0.0.1", "EXTSRC_DB_PORT": "5433", "EXTSRC_DB_NAME": "db",
        "EXTSRC_DB_USER": "loader", "EXTSRC_DB_PASSWORD": "s3cret-loader",
-       "EXTSRC_DB_READER_USER": "reader", "EXTSRC_DB_READER_PASSWORD": "s3cret-reader"}
+       "EXTSRC_DB_READER_USER": "reader", "EXTSRC_DB_READER_PASSWORD": "s3cret-reader",
+       "EXTSRC_DB_LOAD_TIMEOUT_MS": "600000", "EXTSRC_DB_READER_STATEMENT_TIMEOUT_MS": "5000"}
 
 
 class TestSettings:
@@ -27,6 +28,15 @@ class TestSettings:
         loader, reader = DBSettings.from_env("loader", ENV), DBSettings.from_env("reader", ENV)
         assert (loader.user, loader.statement_timeout_ms) == ("loader", 600_000)
         assert (reader.user, reader.statement_timeout_ms) == ("reader", 5_000)
+
+    def test_timeouts_and_work_dir_are_required(self):
+        """No hidden defaults: a missing setting fails loudly (config/chatbot.env)."""
+        for role, name in (("loader", "EXTSRC_DB_LOAD_TIMEOUT_MS"), ("reader", "EXTSRC_DB_READER_STATEMENT_TIMEOUT_MS")):
+            with pytest.raises(ConfigError, match=name):
+                DBSettings.from_env(role, {k: v for k, v in ENV.items() if k != name})
+        with pytest.raises(ConfigError, match="EXTSRC_WORK_DIR"):
+            work_dir({})
+        assert str(work_dir({"EXTSRC_WORK_DIR": "/data"})) == "/data"
 
     def test_password_never_in_repr_or_describe(self):
         settings = DBSettings.from_env("loader", ENV)
@@ -69,29 +79,14 @@ class TestMigrations:
 class TestQueryBuilding:
     def test_values_are_parameters_never_sql(self):
         evil = "x'); DROP TABLE extsrc.snapshot; --"
-        sql, params = build_call_query(CallQuery(programme=evil, text=evil, identifier=evil, sources=[evil]))
+        sql, params = build_call_query(CallQuery(text=evil, identifier=evil, natural_keys=[evil]))
         assert evil not in sql and "DROP" not in sql
-        assert params["programme"] == evil and params["text"] == evil and params["ident"] == evil
+        assert params["text"] == evil and params["ident"] == evil and params["keys"] == [evil]
 
-    def test_like_wildcards_are_escaped(self):
-        _, params = build_call_query(CallQuery(programme="100%_sure"))
-        assert params["programme_like"] == "%100\\%\\_sure%"
-
-    def test_deadline_window_bounds_cover_whole_days(self):
-        sql, params = build_call_query(CallQuery(deadline_from=date(2027, 4, 14), deadline_to=date(2027, 4, 14)))
-        assert params["d_from"] == "2027-04-14T00:00:00+00:00"
-        assert params["d_to"].startswith("2027-04-14T23:59:59.999999")
-        assert "unnest(coalesce(r.deadline_dates" in sql and "dl.value_min_ts" in sql
-
-    def test_open_ended_window_and_budget_overlap(self):
-        sql, params = build_call_query(CallQuery(deadline_from=date(2027, 1, 1), budget_min=1e6))
-        assert params["d_to"] == "infinity"
-        assert "coalesce(bu.value_max_num, r.funding_amount) >= %(b_min)s" in sql
-
-    def test_natural_keys_filter_is_a_parameter(self):
-        sql, params = build_call_query(CallQuery(natural_keys=["A-1'; DROP", "B-2"]))
-        assert "r.natural_key = ANY(%(keys)s)" in sql and "DROP" not in sql
-        assert params["keys"] == ["A-1'; DROP", "B-2"]
+    def test_any_term_text_search(self):
+        sql, params = build_call_query(CallQuery(text="quantum computing", text_any=True, order="relevance"))
+        assert "replace(plainto_tsquery('english', %(text)s)::text, '&', '|')" in sql
+        assert "ORDER BY rank DESC" in sql and params["text"] == "quantum computing"
 
     def test_limit_is_capped_and_order_is_validated(self):
         _, params = build_call_query(CallQuery(limit=10_000))

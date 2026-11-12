@@ -1,7 +1,6 @@
 # Field spec for EU Funding & Tenders "calls for proposals" of EU external action (search type 2,
 # frameworkProgramme 111111 "EU External Action - Prospect", the former EuropeAid PROSPECT system):
 # grants and twinning calls published by EU Delegations and DG INTPA/NEAR/ECHO.
-# Probed live 2026-10-28: 20 open/forthcoming hits, 35 distinct raw keys (all mapped or ignored).
 # There is no description in the payload: the texts are in the published documents
 # (guidelines for applicants, twinning fiche), linked from details.publication_documents.
 source: ft_europeaid

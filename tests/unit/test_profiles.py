@@ -22,7 +22,7 @@ def valid(**override):
     """A valid profiles document for PROG."""
     doc = {
         "defaults": {"families": {"call_specific": ["f1"]}},
-        "profiles": {"a": {"extractor": "x"}, "b": {"extractor": "y", "families": {"call_specific": []}}},
+        "profiles": {"a": {}, "b": {"families": {"call_specific": []}}},
     }
     doc.update(override)
     return doc
@@ -67,8 +67,7 @@ class TestLoading:
     @pytest.mark.parametrize(
         "mutate, message",
         [
-            (lambda d: d["profiles"].pop("b"), "without a profile"),
-            (lambda d: d["profiles"].update(z={"extractor": "x"}), "unknown programmes"),
+            (lambda d: d["profiles"].update(z={}), "unknown programmes"),
             (lambda d: d["profiles"]["a"].update(bogus=1), "unknown keys"),
             (lambda d: d["profiles"]["a"].update(families={"boilerplate": ["f"]}), "family role"),
             (lambda d: d["profiles"]["a"].update(classify=[{"role": "weird", "url": "x"}]), "rule role"),
@@ -102,3 +101,11 @@ def test_shipped_horizon_profile_fetches_the_eurohpc_work_programme():
                          load_policy(), text="Discover EuroHPC JU", profile=profile)
 
     assert role == "programme_level" and about != "programme_level"
+
+
+def test_programme_without_entry_uses_the_defaults(tmp_path):
+    doc = valid()
+    doc["profiles"].pop("b")
+    registry = load_profiles(*write(tmp_path, PROG, doc))
+    assert registry.for_programme("b").families == {"call_specific": ("f1",)}
+

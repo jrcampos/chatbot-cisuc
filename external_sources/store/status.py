@@ -52,6 +52,17 @@ def collect_status(conn: Any | None, work: Path) -> dict[str, Any]:
     return status
 
 
+def open_dead_letters(conn: Any, source: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT id, source, stage, item_key, error, attempts, first_failed_at, last_failed_at, retryable
+               FROM extsrc.dead_letter WHERE resolved_at IS NULL AND (%s::text IS NULL OR source = %s)
+               ORDER BY last_failed_at DESC LIMIT %s""", (source, source, limit))
+        names = [d.name for d in cur.description]
+        return [dict(zip(names, row)) for row in cur.fetchall()]
+
+
+
 def _age(value: Any) -> str:
     if not isinstance(value, timedelta):
         return "-"

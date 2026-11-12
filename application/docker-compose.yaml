@@ -33,6 +33,7 @@ services:
       POSTGRES_PASSWORD: ${EXTSRC_DB_PASSWORD:?EXTSRC_DB_PASSWORD must be defined}
       EXTSRC_DB_READER_USER: ${EXTSRC_DB_READER_USER:?EXTSRC_DB_READER_USER must be defined}
       EXTSRC_DB_READER_PASSWORD: ${EXTSRC_DB_READER_PASSWORD:?EXTSRC_DB_READER_PASSWORD must be defined}
+      EXTSRC_DB_READER_STATEMENT_TIMEOUT_MS: ${EXTSRC_DB_READER_STATEMENT_TIMEOUT_MS:?EXTSRC_DB_READER_STATEMENT_TIMEOUT_MS must be defined}
     volumes:
       - calls_pgdata:/var/lib/postgresql/data
       - ../external_sources/store/init:/docker-entrypoint-initdb.d:ro
@@ -45,27 +46,40 @@ services:
       - chatbot_net
     restart: unless-stopped
 
-  calls_ingest:
+  # One-shot: applies the schema migrations; rag_calls and calls_ingest start only after it succeeds.
+  calls_migrate:
     image: ${CALLS_IMAGE:?CALLS_IMAGE must be defined}
-    command: ["./ingest.sh"]
-    environment:
+    command: ["python", "-m", "external_sources.store", "migrate"]
+    environment: &calls_loader_env
       EXTSRC_DB_HOST: calls_db
       EXTSRC_DB_PORT: "5432"
       EXTSRC_DB_NAME: ${EXTSRC_DB_NAME:?EXTSRC_DB_NAME must be defined}
       EXTSRC_DB_USER: ${EXTSRC_DB_USER:?EXTSRC_DB_USER must be defined}
       EXTSRC_DB_PASSWORD: ${EXTSRC_DB_PASSWORD:?EXTSRC_DB_PASSWORD must be defined}
       EXTSRC_DB_LOAD_TIMEOUT_MS: ${EXTSRC_DB_LOAD_TIMEOUT_MS:?EXTSRC_DB_LOAD_TIMEOUT_MS must be defined}
-      CALLS_INGEST_INTERVAL_SECONDS: ${CALLS_INGEST_INTERVAL_SECONDS:?CALLS_INGEST_INTERVAL_SECONDS must be defined}
+      EXTSRC_WORK_DIR: /data
       MODEL_EMBEDDINGS: ${MODEL_EMBEDDINGS:?MODEL_EMBEDDINGS must be defined}
       OLLAMA_URL: ${OLLAMA_URL:?OLLAMA_URL must be defined}
-    volumes:
-      - calls_work:/data
     depends_on:
       calls_db:
         condition: service_healthy
     networks:
       - chatbot_net
-    restart: unless-stopped
+    restart: "no"
+
+  # One-shot load on every `up`: collect -> enrich -> load -> embed.
+  calls_ingest:
+    image: ${CALLS_IMAGE:?CALLS_IMAGE must be defined}
+    command: ["./ingest.sh"]
+    environment: *calls_loader_env
+    volumes:
+      - calls_work:/data
+    depends_on:
+      calls_migrate:
+        condition: service_completed_successfully
+    networks:
+      - chatbot_net
+    restart: "no"
 
   rag_calls:
     image: ${CALLS_IMAGE:?CALLS_IMAGE must be defined}
@@ -73,6 +87,8 @@ services:
       context: ./RAG_CALLS
       additional_contexts:
         external_sources: ../external_sources
+      args:
+        CALLS_RERANKER_MODEL: ${CALLS_RERANKER_MODEL:?CALLS_RERANKER_MODEL must be defined}
     environment:
       EXTSRC_DB_HOST: calls_db
       EXTSRC_DB_PORT: "5432"
@@ -80,15 +96,32 @@ services:
       EXTSRC_DB_READER_USER: ${EXTSRC_DB_READER_USER:?EXTSRC_DB_READER_USER must be defined}
       EXTSRC_DB_READER_PASSWORD: ${EXTSRC_DB_READER_PASSWORD:?EXTSRC_DB_READER_PASSWORD must be defined}
       EXTSRC_DB_READER_STATEMENT_TIMEOUT_MS: ${EXTSRC_DB_READER_STATEMENT_TIMEOUT_MS:?EXTSRC_DB_READER_STATEMENT_TIMEOUT_MS must be defined}
-      CALLS_CANDIDATES: ${CALLS_CANDIDATES:?CALLS_CANDIDATES must be defined}
+      CALLS_RERANKER_MODEL: ${CALLS_RERANKER_MODEL:?CALLS_RERANKER_MODEL must be defined}
+      CALLS_RETRIEVER_K_LEXICAL: ${CALLS_RETRIEVER_K_LEXICAL:?CALLS_RETRIEVER_K_LEXICAL must be defined}
+      CALLS_RETRIEVER_K_VECTOR: ${CALLS_RETRIEVER_K_VECTOR:?CALLS_RETRIEVER_K_VECTOR must be defined}
+      CALLS_RRF_WEIGHT_LEXICAL: ${CALLS_RRF_WEIGHT_LEXICAL:?CALLS_RRF_WEIGHT_LEXICAL must be defined}
+      CALLS_RRF_WEIGHT_VECTOR: ${CALLS_RRF_WEIGHT_VECTOR:?CALLS_RRF_WEIGHT_VECTOR must be defined}
+      CALLS_POOL_MULTIPLIER: ${CALLS_POOL_MULTIPLIER:?CALLS_POOL_MULTIPLIER must be defined}
+      CALLS_POOL_MIN_SIZE: ${CALLS_POOL_MIN_SIZE:?CALLS_POOL_MIN_SIZE must be defined}
+      CALLS_QUERY_CACHE_SIZE: ${CALLS_QUERY_CACHE_SIZE:?CALLS_QUERY_CACHE_SIZE must be defined}
+      OMP_NUM_THREADS: ${CALLS_CPUS:?CALLS_CPUS must be defined}
+      MKL_NUM_THREADS: ${CALLS_CPUS:?CALLS_CPUS must be defined}
       CALLS_DETAILED: ${CALLS_DETAILED:?CALLS_DETAILED must be defined}
       CALLS_DETAILED_MAX_CHARS: ${CALLS_DETAILED_MAX_CHARS:?CALLS_DETAILED_MAX_CHARS must be defined}
       LLM_PROVIDER: ${LLM_PROVIDER:?LLM_PROVIDER must be defined}
       MODEL_EMBEDDINGS: ${MODEL_EMBEDDINGS:?MODEL_EMBEDDINGS must be defined}
       OLLAMA_URL: ${OLLAMA_URL:?OLLAMA_URL must be defined}
+    cpus: ${CALLS_CPUS:?CALLS_CPUS must be defined}
+    healthcheck:
+      # Healthy only after the reranker and a full retrieval are warmed up (GET /health -> 200).
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health', timeout=5)"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
     depends_on:
-      calls_db:
-        condition: service_healthy
+      calls_migrate:
+        condition: service_completed_successfully
     networks:
       - chatbot_net
     restart: unless-stopped
@@ -100,6 +133,8 @@ services:
     environment:
       RAG_API_URL: http://rag_cisuc:8001/query
       RAG_TOP_K: ${RAG_TOP_K:?RAG_TOP_K must be defined}
+      RAG_REQUEST_TIMEOUT: ${RAG_REQUEST_TIMEOUT:?RAG_REQUEST_TIMEOUT must be defined}
+      ORCH_RAG_MAX_PARALLEL: ${ORCH_RAG_MAX_PARALLEL:?ORCH_RAG_MAX_PARALLEL must be defined}
       CALLS_SOURCE: ${CALLS_SOURCE:?CALLS_SOURCE must be defined}
       CALLS_API_URL: ${CALLS_API_URL:?CALLS_API_URL must be defined}
       CALLS_TOP_K: ${CALLS_TOP_K:?CALLS_TOP_K must be defined}
@@ -112,8 +147,10 @@ services:
     ports:
       - "${ORCHESTRATOR_HOST_PORT:?ORCHESTRATOR_HOST_PORT must be defined}:8002"
     depends_on:
-      - rag_cisuc
-      - rag_calls
+      rag_cisuc:
+        condition: service_started
+      rag_calls:
+        condition: service_healthy
     networks:
       - chatbot_net
     restart: unless-stopped

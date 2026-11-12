@@ -94,14 +94,20 @@ class TestFillFromDetail:
 
 
 class TestPluginDetailFallback:
+    """fetch() completes thin search results from the detail endpoint (FTPortalPlugin._add_detail)."""
+
+    @staticmethod
+    def build(plugin, metadata, label="Horizon Europe"):
+        records = [plugin._record_from_result({"metadata": metadata}, label)]
+        return plugin._add_detail(records) if plugin.detail_enricher else records
+
     def _plugin(self, payload):
         plugin = FTPortalPlugin(now=FIXED_NOW)
         plugin.detail_enricher = StubEnricher(payload)
         return plugin
 
     def test_thin_search_result_is_completed_from_detail(self):
-        plugin = self._plugin(detail_payload())
-        [record] = plugin.build_records([{"metadata": thin_metadata()}], "Horizon Europe")
+        [record] = self.build(self._plugin(detail_payload()), thin_metadata())
         assert record.description == "Detail description"
         assert record.funding_amount == 1000000.0
         assert record.details["conditions"] == "Conditions\nPage limit"
@@ -113,17 +119,12 @@ class TestPluginDetailFallback:
         assert "descriptionByte" in record.raw["detail"]["_filled_from_detail"]
 
     def test_present_search_value_is_not_overwritten(self):
-        plugin = self._plugin(detail_payload())
         meta = thin_metadata(descriptionByte=["<p>From search</p>"])
-        [record] = plugin.build_records([{"metadata": meta}], "Horizon Europe")
+        [record] = self.build(self._plugin(detail_payload()), meta)
         assert record.description == "From search"
         assert record.field_sources["description"] == "api"
 
-    def test_build_records_without_enrichment(self):
-        plugin = self._plugin(detail_payload())
-        [plain] = plugin.build_records([{"metadata": thin_metadata()}], "P", enrich=False)
-        assert plain.description is None
-        assert plain.field_sources["title"] == "api"
-        bare = FTPortalPlugin(now=FIXED_NOW)
-        [rec] = bare.build_records([{"metadata": thin_metadata()}], "P")
-        assert rec.description is None
+    def test_without_detail_enricher_fields_stay_empty(self):
+        [record] = self.build(FTPortalPlugin(now=FIXED_NOW), thin_metadata(), "P")
+        assert record.description is None
+        assert record.field_sources["title"] == "api"

@@ -97,6 +97,3 @@ def migrate(conn: Any, directory: Path = MIGRATIONS_DIR) -> list[str]:
     return newly
 
 
-def pending(conn: Any, directory: Path = MIGRATIONS_DIR) -> list[str]:
-    done = applied(conn)
-    return [m.version for m in discover(directory) if m.version not in done]

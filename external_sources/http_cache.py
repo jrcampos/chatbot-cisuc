@@ -16,6 +16,10 @@ Every enrichment fetch (per-call detail JSON, PDFs, web pages) goes through
   from a stale copy. Any other 403 is an ordinary "error".
 - bodies larger than `max_bytes` are rejected while streaming ("error", "too
   large"), never cached.
+- URLs come from call texts (some written by third parties), so every request and every
+  redirect hop must be http(s) to a host whose addresses are all public (`check_public_url`):
+  the loader runs inside the application network and must not reach its services or the lab
+  hosts (SSRF). A blocked URL is an "error" result, never served from cache.
 - with `respect_robots=True` a `RobotsGate` consults each host's robots.txt
   (cached in memory and on disk for 24 h); disallowed URLs are "blocked_robots"
   and never requested. A missing/unreachable/5xx robots.txt means allowed.
@@ -24,14 +28,19 @@ Every enrichment fetch (per-call detail JSON, PDFs, web pages) goes through
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import logging
+import socket
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib import robotparser
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
+
+from typing import Any
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -43,6 +52,23 @@ ROBOTS_TTL_SECONDS = 24 * 3600
 CHUNK_BYTES = 64 * 1024
 ROBOTS_MARKER = "disallowed by robots.txt"
 USER_AGENT = "cisuc-chatbot-external-sources/1.0 (research use)"
+MAX_REDIRECTS = 5
+_REDIRECTS = (301, 302, 303, 307, 308)
+
+
+def check_public_url(url: str) -> str | None:
+    """None when `url` may be fetched, else why not: http(s) only, every resolved address public."""
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return f"blocked URL (scheme/host): {url[:200]}"
+    try:
+        infos = socket.getaddrinfo(parts.hostname, parts.port or None, proto=socket.IPPROTO_TCP)
+    except (OSError, UnicodeError, ValueError) as exc:
+        return f"blocked URL (cannot resolve {parts.hostname}: {type(exc).__name__})"
+    for info in infos:
+        if not ipaddress.ip_address(info[4][0].split("%", 1)[0]).is_global:
+            return f"blocked URL ({parts.hostname} resolves to a non-public address)"
+    return None
 
 
 @dataclass
@@ -87,7 +113,7 @@ class RobotsGate:
         self.decisions: list[RobotsDecision] = []
 
     def _disk_path(self, origin: str) -> Path:
-        key = hashlib.sha1(origin.encode("utf-8")).hexdigest()[:24]
+        key = hashlib.sha1(origin.encode("utf-8"), usedforsecurity=False).hexdigest()[:24]
         return self.cache_dir / f"robots_{key}.json"
 
     @staticmethod
@@ -109,7 +135,7 @@ class RobotsGate:
         parser, note, lines = None, None, None
         try:
             response = self.session.get(
-                f"{origin}/robots.txt", headers={}, timeout=self.timeout
+                f"{origin}/robots.txt", headers={}, timeout=self.timeout, allow_redirects=False
             )
             if response.status_code == 200:
                 lines = (response.content or b"").decode("utf-8", errors="replace").splitlines()
@@ -156,6 +182,7 @@ class CachedFetcher:
         max_bytes: int = 60_000_000,
         respect_robots: bool = False,
         fresh_for: float = 0.0,
+        url_check: Callable[[str], str | None] | None = check_public_url,
     ) -> None:
         """
         Args:
@@ -169,6 +196,8 @@ class CachedFetcher:
             respect_robots: consult robots.txt per host before every request.
             fresh_for: seconds a cached body is served without any request (0 = always
                 revalidate). Used by resumed and repeated runs to stay polite.
+            url_check: returns why a URL must not be requested (None = allowed); checked for
+                the URL and every redirect hop. Tests with fake sessions pass None.
         """
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -179,6 +208,7 @@ class CachedFetcher:
         self.max_bytes = max_bytes
         self.robots = RobotsGate(self.session, self.cache_dir, timeout) if respect_robots else None
         self.fresh_for = fresh_for
+        self.url_check = url_check
         self._last_request = 0.0
 
     @staticmethod
@@ -197,7 +227,7 @@ class CachedFetcher:
         return session
 
     def _paths(self, url: str) -> tuple[Path, Path]:
-        key = hashlib.sha1(url.encode("utf-8")).hexdigest()[:24]
+        key = hashlib.sha1(url.encode("utf-8"), usedforsecurity=False).hexdigest()[:24]
         return self.cache_dir / f"{key}.json", self.cache_dir / f"{key}.bin"
 
     def _throttle(self) -> None:
@@ -231,6 +261,10 @@ class CachedFetcher:
                 meta.get("last_modified"), from_cache=True,
             )
 
+        blocked = self.url_check(url) if self.url_check else None
+        if blocked:
+            return FetchResult("error", error=blocked)
+
         if self.robots is not None and not self.robots.check(url).allowed:
             return FetchResult("blocked_robots", error="disallowed by robots.txt")
 
@@ -243,15 +277,32 @@ class CachedFetcher:
 
         self._throttle()
         try:
-            response = self.session.get(url, headers=headers, timeout=self.timeout, stream=True)
+            response, blocked = self._get_following_redirects(url, headers)
         except requests.RequestException as exc:
             return self._stale(meta, body_path, f"{type(exc).__name__}: {exc}")
+        if blocked:
+            return FetchResult("error", error=blocked)
         try:
             return self._handle(url, response, meta, meta_path, body_path)
         finally:
             close = getattr(response, "close", None)
             if close:
                 close()
+
+    def _get_following_redirects(self, url: str, headers: dict[str, str]) -> tuple[Any, str | None]:
+        """GET with redirects followed here, so every hop passes `url_check`."""
+        for _ in range(MAX_REDIRECTS + 1):
+            response = self.session.get(url, headers=headers, timeout=self.timeout, stream=True,
+                                        allow_redirects=False)
+            location = response.headers.get("Location") if response.status_code in _REDIRECTS else None
+            if not location:
+                return response, None
+            response.close()
+            url = urljoin(url, location)
+            blocked = self.url_check(url) if self.url_check else None
+            if blocked:
+                return None, blocked
+        raise requests.TooManyRedirects(f"more than {MAX_REDIRECTS} redirects")
 
     def _is_fresh(self, meta: dict) -> bool:
         try:

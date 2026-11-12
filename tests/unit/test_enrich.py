@@ -47,6 +47,19 @@ def call(key="SMP-FOOD-X", **kwargs):
     return NormalizedRecord(**base)
 
 
+def enrich_all(enricher, records, pool=None):
+    """Every record through Enricher.iter_enrich, as the store runner does: a failing record is
+    kept with an `enrichment_error` gap. Returns (records, natural_key -> own documents)."""
+    enriched, index = [], {}
+    for record, new_record, documents, error in enricher.iter_enrich(records, pool):
+        if new_record is None:
+            gap = {"field": "enrichment", "kind": "enrichment_error", "error": error}
+            new_record = record.model_copy(update={"data_gaps": [*record.data_gaps, gap]})
+        enriched.append(new_record)
+        index[record.natural_key] = documents
+    return enriched, index
+
+
 class FakePipeline:
     """Pipeline double: fixed CallDocuments over a real store."""
 
@@ -121,7 +134,7 @@ class TestEnricher:
         for topic in topics:
             pipeline.docs_by_key[topic.natural_key] = [doc]
 
-        enriched, _ = enricher.enrich(topics)
+        enriched, _ = enrich_all(enricher, topics)
 
         by_key = {r.natural_key: r for r in enriched}
         assert by_key["EDF-X-ALPHA"].funding_amount == 60e6
@@ -144,7 +157,7 @@ class TestEnricher:
         for topic in topics:
             pipeline.docs_by_key[topic.natural_key] = [doc]
 
-        enriched, _ = enricher.enrich([topics[2]], pool=topics)
+        enriched, _ = enrich_all(enricher, [topics[2]], pool=topics)
 
         assert enriched[0].funding_amount == 30e6
 
@@ -219,7 +232,7 @@ class TestEnricher:
         for t in topics:
             pipeline.docs_by_key[t.natural_key] = [doc]
 
-        enriched, _ = enricher.enrich(topics)
+        enriched, _ = enrich_all(enricher, topics)
 
         by_key = {r.natural_key: r for r in enriched}
         assert by_key["EDF-P-ALPHA"].funding_amount == 122.25e6
@@ -242,7 +255,7 @@ class TestEnricher:
         for t in topics:
             pipeline.docs_by_key[t.natural_key] = [doc]
 
-        enriched, _ = enricher.enrich(topics)
+        enriched, _ = enrich_all(enricher, topics)
 
         alpha = {r.natural_key: r for r in enriched}["EDF-Q-ALPHA"]
         assert alpha.funding_amount == 100e6
@@ -281,7 +294,7 @@ class TestIsolation:
         enricher = Enricher(pipeline, load_families(), REQUIRED, REQUIRED_ANY)
         good, bad = call("GOOD", description="d", funding_amount=1.0), call("BAD", title="orig")
 
-        enriched, index = enricher.enrich([bad, good])
+        enriched, index = enrich_all(enricher, [bad, good])
 
         assert [r.natural_key for r in enriched] == ["BAD", "GOOD"]
         assert enriched[0].title == "orig"
@@ -315,7 +328,7 @@ def stub_registry(tmp_path, call_specific):
     (tmp_path / "fam.yaml").write_text(STUB_FAMILIES)
     (tmp_path / "prog.yaml").write_text(yaml.safe_dump({"programmes": {"smp": {"id": "1", "label": "SMP"}}}))
     (tmp_path / "prof.yaml").write_text(yaml.safe_dump(
-        {"profiles": {"smp": {"extractor": "x", "families": {"call_specific": call_specific}}}}))
+        {"profiles": {"smp": {"families": {"call_specific": call_specific}}}}))
     return load_families(tmp_path / "fam.yaml"), load_profiles(tmp_path / "prof.yaml", tmp_path / "prog.yaml")
 
 
@@ -377,7 +390,7 @@ def topic(key="HORIZON-CL3-2027-01-BM-03", programme="Horizon Europe", **kwargs)
 
 
 class TestProgrammePool:
-    """Test Enricher.enrich() anchoring topics against programme-level documents of the programme"""
+    """Test ) anchoring topics against programme-level documents of the programme"""
 
     def _setup(self, tmp_path):
         pipeline = FakePipeline(tmp_path, {})
@@ -391,7 +404,7 @@ class TestProgrammePool:
         new = fiche_doc(pipeline.store, WP_SECTION, "programme_level", WP_URL)
         pipeline.docs_by_key = {"HORIZON-CL3-2027-01-BM-03": [old], "SIBLING-1": [new]}
 
-        records, index = enricher.enrich([topic(), topic("SIBLING-1")])
+        records, index = enrich_all(enricher, [topic(), topic("SIBLING-1")])
 
         first = records[0]
         assert first.funding_amount == 8_000_000
@@ -404,7 +417,7 @@ class TestProgrammePool:
         new = fiche_doc(pipeline.store, WP_SECTION, "programme_level", WP_URL)
         pipeline.docs_by_key = {"OTHER-1": [new]}
 
-        records, _ = enricher.enrich([topic(), topic("OTHER-1", programme="Digital Europe")])
+        records, _ = enrich_all(enricher, [topic(), topic("OTHER-1", programme="Digital Europe")])
 
         assert records[0].funding_amount is None
 
@@ -417,7 +430,7 @@ class TestProgrammePool:
         )
         pipeline.docs_by_key = {"HORIZON-CL3-2027-01-BM-03": [own], "SIBLING-1": [pooled]}
 
-        records, _ = enricher.enrich([topic(), topic("SIBLING-1")])
+        records, _ = enrich_all(enricher, [topic(), topic("SIBLING-1")])
 
         assert records[0].funding_amount == 8_000_000
         assert not [g for g in records[0].data_gaps if g.get("kind") == "discrepancy"]
@@ -428,7 +441,7 @@ class TestProgrammePool:
         new = fiche_doc(pipeline.store, WP_SECTION, "programme_level", WP_URL)
         pipeline.docs_by_key = {"SIBLING-1": [new]}
 
-        _, index = enricher.enrich([topic(), topic("SIBLING-1")])
+        _, index = enrich_all(enricher, [topic(), topic("SIBLING-1")])
 
         assert index["HORIZON-CL3-2027-01-BM-03"] == []
         assert index["SIBLING-1"] == [new]
@@ -442,7 +455,7 @@ class TestProgrammePool:
         for fam in families.values():
             object.__setattr__(fam, "roles", ("programme_level",))
 
-        records, _ = Enricher(pipeline, families, REQUIRED).enrich([topic(), topic("SIBLING-1")])
+        records, _ = enrich_all(Enricher(pipeline, families, REQUIRED), [topic(), topic("SIBLING-1")])
 
         assert not records[0].description
 
@@ -521,7 +534,7 @@ class TestSourcesAndVerification:
         new = fiche_doc(pipeline.store, WP_SECTION, "programme_level", WP_URL)
         pipeline.docs_by_key = {"SIBLING-1": [new]}
 
-        records, index = enricher.enrich([topic(), topic("SIBLING-1")])
+        records, index = enrich_all(enricher, [topic(), topic("SIBLING-1")])
 
         urls = [s["url"] for s in records[0].details["sources"]]
         assert WP_URL in urls and index["HORIZON-CL3-2027-01-BM-03"] == []

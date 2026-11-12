@@ -36,7 +36,8 @@ def topic_page_url(record: Any) -> str | None:
     return None
 
 
-def _iso(http_date: str | None) -> str | None:
+def http_date_iso(http_date: str | None) -> str | None:
+    """An HTTP date (Last-Modified) as ISO-8601 UTC, or None when absent/unparsable."""
     if not http_date:
         return None
     try:
@@ -129,7 +130,7 @@ def build_sources(
         sources.append({
             "kind": _kind(role, url, title), "title": title, "url": url, "role": role, "doc_id": doc_id,
             "fields": sorted(info["fields"]), "pages": sorted(info["pages"]),
-            "retrieved_at": meta.get("stored_at"), "last_modified": _iso(meta.get("last_modified")),
+            "retrieved_at": meta.get("stored_at"), "last_modified": http_date_iso(meta.get("last_modified")),
             "content_sha256": meta.get("content_sha256"),
         })
         if meta.get("resolved_url"):

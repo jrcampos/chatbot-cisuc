@@ -16,9 +16,6 @@ every source in one scheduled run.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import UTC
-from email.utils import parsedate_to_datetime
-from pathlib import Path
 from typing import Any
 
 from external_sources.documents.pipeline import CallDocument
@@ -33,21 +30,12 @@ from external_sources.plugins.base import NormalizedRecord
 from external_sources.quality import (
     compute_gaps,
 )
-from external_sources.sources import build_sources
+from external_sources.sources import build_sources, http_date_iso
 from external_sources.verification import Verifier, value_ranges
 
-DEFAULT_OUTPUT_DIR = Path(__file__).parent / "output"
 TRIED_SOURCES = ["api", "detail", "documents"]
 
 
-def _iso_utc(http_date: str | None) -> str | None:
-    """An HTTP date (Last-Modified) as ISO-8601 UTC, or None when absent/unparsable."""
-    if not http_date:
-        return None
-    try:
-        return parsedate_to_datetime(http_date).astimezone(UTC).isoformat()
-    except (TypeError, ValueError):
-        return None
 
 
 class Enricher:
@@ -191,7 +179,7 @@ class Enricher:
                 return []
             if count:
                 documents_read += 1
-            published_at = _iso_utc(stored.meta.get("last_modified"))
+            published_at = http_date_iso(stored.meta.get("last_modified"))
             out: list[Extraction] = []
             for family in families:
                 found, notes = extract_fields(
@@ -336,19 +324,3 @@ class Enricher:
                 continue
             yield record, new_record, own, None
 
-    def enrich(
-        self, records: list[NormalizedRecord], pool: list[NormalizedRecord] | None = None
-    ) -> tuple[list[NormalizedRecord], dict[str, list[CallDocument]]]:
-        """
-        Enrich every record (see `iter_enrich`); returns the records and a natural_key ->
-        own-documents index. A failing record is kept unchanged with an `enrichment_error` gap.
-        """
-        enriched: list[NormalizedRecord] = []
-        index: dict[str, list[CallDocument]] = {}
-        for record, new_record, documents, error in self.iter_enrich(records, pool):
-            if new_record is None:
-                gap = {"field": "enrichment", "kind": "enrichment_error", "error": error}
-                new_record = record.model_copy(update={"data_gaps": [*record.data_gaps, gap]})
-            enriched.append(new_record)
-            index[record.natural_key] = documents
-        return enriched, index

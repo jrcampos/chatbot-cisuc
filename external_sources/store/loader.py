@@ -23,7 +23,6 @@ import logging
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 from external_sources.documents.store import DocumentStore
@@ -692,5 +691,3 @@ class Loader:
                    WHERE run_id = %s""", (status, _jsonb(summary), error, run_id))
 
 
-def documents_dir_of(batch: LoadBatch) -> Path | None:
-    return Path(batch.documents_dir) if batch.documents_dir else None

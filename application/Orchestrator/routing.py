@@ -4,13 +4,13 @@ Source routing for the Orchestrator: which retrieval service answers a question.
 The fast SLM that extracts the search keywords also starts its answer with a source tag:
 [CISUC] (CISUC's own knowledge base, ChromaDB via RAG_CISUC), [CALLS] (open and forthcoming EU
 funding calls, Postgres via RAG_CALLS) or [AMBOS] (both). A missing or unknown tag falls back to
-CISUC, which is the behaviour before the calls source existed. Nothing here calls a model or a
-service, so it is unit-tested directly.
+CISUC, unless it names a call identifier.
+Nothing here calls a model or a service, so it is unit-tested directly.
 """
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from typing import Any
 
 CISUC = "cisuc"
@@ -30,42 +30,63 @@ ROUTING_RULE = (
 )
 
 
+_EDGE = "[](){}.,;:!?\"'"
+
+
+def has_call_identifier(text: str) -> bool:
+    """A call/topic identifier: >= 3 ASCII alphanumeric parts joined by '-' or '/', one of them a number of
+    >= 4 digits (HORIZON-CL4-2027-04-..., EuropeAid/187686/ID/ACT/MK, FT-CASCADE-43977648, ERC-2027-COG).
+    The number part keeps hyphenated words ('state-of-the-art') out. Plain string checks: linear time."""
+    for token in text.split():
+        parts = token.strip(_EDGE).replace("/", "-").split("-")
+        if (len(parts) >= 3 and all(p.isascii() and p.isalnum() for p in parts)
+                and any(p.isdigit() and len(p) >= 4 for p in parts)):
+            return True
+    return False
+
+
 def parse_targets(raw: str, calls_enabled: bool) -> tuple[tuple[str, ...], list[str]]:
-    """(sources to query, search targets) from the SLM output '[TAG] target | target'."""
+    """(sources to query, search targets) from the SLM output '[TAG] target | target'. Without a valid
+    tag, an output naming a call identifier goes to the calls (the SLM sometimes writes '[ID]' instead
+    of '[CALLS] ID'); anything else goes to CISUC."""
     text = (raw or "").strip()
     match = _TAG.match(text)
-    sources: tuple[str, ...] = (CISUC,)
     if match:
         sources = _ROUTES[match.group(1).lower()]
         text = text[match.end():]
+    elif has_call_identifier(text):
+        sources = (CALLS,)
+    else:
+        sources = (CISUC,)
     if not calls_enabled:
         sources = (CISUC,)
-    targets = [t.strip() for t in text.split("|") if t.strip()] or ([text.strip()] if text.strip() else [])
-    return sources, targets
+    targets = [t.strip() for t in text.split("|") if t.strip()]
+    return sources, [t[1:-1].strip() if t.startswith("[") and t.endswith("]") else t for t in targets]
 
 
-def retrieve(
-    post: Callable[[str], list[dict[str, Any]]],
-    targets: Iterable[str],
-    top_k: int,
-    key: Callable[[dict[str, Any]], Any],
-) -> list[dict[str, Any]]:
-    """One retrieval per target (as for CISUC), deduplicated by `key`, capped at `top_k`.
-    A failing target is logged and skipped; the others still answer."""
-    documents: list[dict[str, Any]] = []
-    seen: set[Any] = set()
-    for target in targets:
-        try:
-            results = post(target)
-        except Exception as e:  # noqa: BLE001 - one unreachable service must not fail the answer
-            print(f"[ERRO] Falha na recuperação para '{target}': {e}")
-            continue
-        for doc in results:
-            k = key(doc)
-            if k not in seen:
-                seen.add(k)
-                documents.append(doc)
-    return documents[:top_k]
+def intercalar_resultados(listas: list[list[dict[str, Any]]], limite: int,
+                          key: Callable[[dict[str, Any]], Any]) -> list[dict[str, Any]]:
+    """Round-robin merge of several RAG result lists, deduplicated by `key`, cut to `limite`.
+    Interleaving keeps every query represented after the cut. `key` is the chunk for CISUC and
+    the natural key for calls."""
+    vistos: set[Any] = set()
+    saida: list[dict[str, Any]] = []
+    for posicao in range(max((len(lista) for lista in listas), default=0)):
+        for lista in listas:
+            if posicao < len(lista):
+                doc = lista[posicao]
+                chave = key(doc)
+                if chave not in vistos:
+                    vistos.add(chave)
+                    saida.append(doc)
+    return saida[:limite]
+
+
+def combinar(resultados_pergunta: list[dict[str, Any]], resultados_por_alvo: list[list[dict[str, Any]]],
+             limite: int, key: Callable[[dict[str, Any]], Any]) -> list[dict[str, Any]]:
+    """The full question gets half of the slots; the keyword queries share the other half."""
+    resultados_alvos = intercalar_resultados(resultados_por_alvo, limite, key)
+    return intercalar_resultados([resultados_pergunta, resultados_alvos], limite, key)
 
 
 def cisuc_key(doc: dict[str, Any]) -> tuple[str, str]:

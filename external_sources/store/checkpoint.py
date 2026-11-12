@@ -31,7 +31,6 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-TERMINAL = ("done", "failed")
 
 
 def _now() -> str:

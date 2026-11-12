@@ -93,12 +93,6 @@ def strip(value: Any, ctx: dict[str, Any]) -> str | None:
     return text or None
 
 
-@transform("strip_suffix")
-def strip_suffix(value: Any, ctx: dict[str, Any], suffix: str) -> Any:
-    """Remove `suffix` from the end of a string when present."""
-    if suffix and isinstance(value, str) and value.endswith(suffix):
-        return value[: -len(suffix)]
-    return value
 
 
 @transform("html_to_text")

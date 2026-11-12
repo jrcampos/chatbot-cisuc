@@ -294,8 +294,8 @@ class TestDefectFixes:
 
     def test_step_kwargs_validated(self, tmp_path):
         """Step kwargs must match the transform's signature"""
-        text = "fields:\n  a: [{to: title, parse: [{strip_suffix: {sufix: x}}]}]\n"
-        with pytest.raises(SpecError, match="strip_suffix"):
+        text = "fields:\n  a: [{to: title, parse: [{get: {pth: x}}]}]\n"
+        with pytest.raises(SpecError, match="get"):
             load_spec(write_spec(tmp_path, text))
 
     def test_duplicate_yaml_keys_rejected(self, tmp_path):

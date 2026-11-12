@@ -72,7 +72,7 @@ class TestFirst:
 
 
 class TestStrip:
-    """Test strip() and strip_suffix()"""
+    """Test strip()"""
 
     def test_collapses_whitespace(self):
         """Internal runs of whitespace collapse to one space"""
@@ -82,17 +82,8 @@ class TestStrip:
         """Whitespace-only input becomes None"""
         assert t.strip("   ", CTX) is None
 
-    def test_strip_suffix_removes_suffix(self):
-        """A matching suffix is removed"""
-        assert t.strip_suffix("a/b.json", CTX, suffix=".json") == "a/b"
 
-    def test_strip_suffix_leaves_other_values(self):
-        """A non-matching value is returned unchanged"""
-        assert t.strip_suffix("a/b", CTX, suffix=".json") == "a/b"
 
-    def test_strip_suffix_empty_suffix(self):
-        """Empty suffix does not destroy the value"""
-        assert t.strip_suffix("a/b.json", CTX, suffix="") == "a/b.json"
 
 
 class TestHtmlToText:

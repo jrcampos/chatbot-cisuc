@@ -18,7 +18,6 @@ import yaml
 
 PACKAGE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_POLICY_PATH = PACKAGE_DIR / "config" / "store_policy.yaml"
-DEFAULT_WORK_DIR = PACKAGE_DIR / "output" / "store"
 
 
 class ConfigError(RuntimeError):
@@ -32,7 +31,7 @@ class DBSettings:
     dbname: str
     user: str
     password: str = field(repr=False)
-    statement_timeout_ms: int = 600_000
+    statement_timeout_ms: int
     connect_timeout_s: int = 10
     application_name: str = "external_sources"
 
@@ -41,8 +40,9 @@ class DBSettings:
         """`role` is 'loader' (read/write) or 'reader' (the chatbot's read-only login)."""
         env = os.environ if env is None else env
         prefix = "EXTSRC_DB_READER_" if role == "reader" else "EXTSRC_DB_"
+        timeout_name = "EXTSRC_DB_READER_STATEMENT_TIMEOUT_MS" if role == "reader" else "EXTSRC_DB_LOAD_TIMEOUT_MS"
         names = {"host": "EXTSRC_DB_HOST", "port": "EXTSRC_DB_PORT", "dbname": "EXTSRC_DB_NAME",
-                 "user": f"{prefix}USER", "password": f"{prefix}PASSWORD"}
+                 "user": f"{prefix}USER", "password": f"{prefix}PASSWORD", "timeout": timeout_name}
         missing = [name for name in names.values() if not env.get(name)]
         if missing:
             raise ConfigError(
@@ -50,8 +50,7 @@ class DBSettings:
                 + " (defaults in config/chatbot.env, passwords in secrets/chatbot.env)")
         try:
             port = int(env["EXTSRC_DB_PORT"])
-            timeout_name = "EXTSRC_DB_READER_STATEMENT_TIMEOUT_MS" if role == "reader" else "EXTSRC_DB_LOAD_TIMEOUT_MS"
-            timeout = int(env.get(timeout_name) or (5_000 if role == "reader" else 600_000))
+            timeout = int(env[timeout_name])
         except ValueError as exc:
             raise ConfigError(f"EXTSRC_DB_PORT / statement timeout must be integers ({exc.__class__.__name__})") from None
         return cls(env["EXTSRC_DB_HOST"], port, env["EXTSRC_DB_NAME"], env[names["user"]],
@@ -75,4 +74,6 @@ def load_store_policy(path: str | Path = DEFAULT_POLICY_PATH) -> dict[str, Any]:
 def work_dir(env: Mapping[str, str] | None = None) -> Path:
     """Where run checkpoints, spooled batches, documents and logs live."""
     env = os.environ if env is None else env
-    return Path(env.get("EXTSRC_WORK_DIR") or DEFAULT_WORK_DIR)
+    if not env.get("EXTSRC_WORK_DIR"):
+        raise ConfigError("missing environment variable: EXTSRC_WORK_DIR")
+    return Path(env["EXTSRC_WORK_DIR"])

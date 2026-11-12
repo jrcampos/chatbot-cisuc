@@ -1,13 +1,12 @@
 """
 Unit tests for the external_sources shared plugin base — NormalizedRecord,
-SourcePlugin, and MissingAPIKeyError.
+and SourcePlugin.
 """
 
 import pytest
 from pydantic import ValidationError
 
 from external_sources.plugins.base import (
-    MissingAPIKeyError,
     NormalizedRecord,
     SourcePlugin,
 )
@@ -104,20 +103,6 @@ class TestSourcePlugin:
         assert plugin.fetch() == []
 
 
-class TestMissingAPIKeyError:
-    """Test the MissingAPIKeyError exception type"""
-
-    def test_is_a_runtime_error(self):
-        """MissingAPIKeyError should be catchable as a RuntimeError"""
-        with pytest.raises(RuntimeError):
-            raise MissingAPIKeyError("KEEP_EU_API_KEY not set")
-
-    def test_carries_message(self):
-        """The exception message should be preserved"""
-        try:
-            raise MissingAPIKeyError("KEEP_EU_API_KEY not set")
-        except MissingAPIKeyError as e:
-            assert "KEEP_EU_API_KEY" in str(e)
 
 
 class TestDetailsAndFieldSpec:

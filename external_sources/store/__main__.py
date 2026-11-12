@@ -6,9 +6,7 @@ CLI of the external-sources store.
     python -m external_sources.store run --source ft_portal ft_cascade
     python -m external_sources.store status [--json]
     python -m external_sources.store coverage [--json]
-    python -m external_sources.store dead-letters list [--source S]
-    python -m external_sources.store dead-letters retry [--source S]
-    python -m external_sources.store prune
+    python -m external_sources.store dead-letters [--source S]
     python -m external_sources.store embed [--limit N] [--records-only]
 
 Exit codes (run): 0 ok, 1 degraded (data served, flagged), 2 usage/config error, 3 database
@@ -47,7 +45,7 @@ def cmd_migrate(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    from external_sources.quality import notifier_from_env
+    from external_sources.quality import alert_notifier
     from external_sources.store.runner import Runner, RunOptions, StopFlag
     policy = load_store_policy()
     sources = list(policy["runner"]["sources"]) if args.all else list(args.source or [])
@@ -64,7 +62,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     stop.install()
     attempts = int(policy["runner"].get("db_connect_attempts", 4))
     runner = Runner(work, options, policy, lambda: _connect(attempts=attempts),
-                    notifier=notifier_from_env(work), stop=stop)
+                    notifier=alert_notifier(work), stop=stop)
     return runner.run()
 
 
@@ -89,33 +87,12 @@ def cmd_coverage(args: argparse.Namespace) -> int:
 
 
 def cmd_dead_letters(args: argparse.Namespace) -> int:
-    from external_sources.store import deadletters
-    conn = _connect()
-    if args.action == "list":
-        letters = deadletters.list_open(conn, args.source, args.limit)
-        for letter in letters:
-            print(f"#{letter['id']} {letter['source']} {letter['stage']:<9} x{letter['attempts']} "
-                  f"{letter['item_key'][:90]}\n      {letter['error'][:200]}")
-        print(f"{len(letters)} open dead letter(s)")
-        return 0
-    from external_sources.http_cache import USER_AGENT, CachedFetcher
-    from external_sources.resilience import ResilientSession
-    fetcher = CachedFetcher(work_dir() / "cache" / "http", session=ResilientSession(user_agent=USER_AGENT),
-                            respect_robots=True, force_refresh=True)
-    outcomes = deadletters.retry(conn, fetcher, args.source, args.limit)
-    for outcome in outcomes:
-        mark = {True: "resolved", False: "still failing", None: "next run"}[outcome["ok"]]
-        print(f"#{outcome['id']} {outcome['stage']:<9} {mark:<13} {outcome['item_key'][:80]}  {outcome['detail'][:120]}")
-    return 0 if all(o["ok"] is not False for o in outcomes) else 1
-
-
-def cmd_prune(args: argparse.Namespace) -> int:
-    from external_sources.store.checkpoint import prune_run_dirs
-    from external_sources.store.retention import prune
-    policy = load_store_policy()
-    counts = prune(_connect(), policy["retention"])
-    counts["run_dirs"] = prune_run_dirs(work_dir(), float(policy["retention"].get("run_dir_days", 14)))
-    print(json.dumps(counts))
+    from external_sources.store.status import open_dead_letters
+    letters = open_dead_letters(_connect(), args.source, args.limit)
+    for letter in letters:
+        print(f"#{letter['id']} {letter['source']} {letter['stage']:<9} x{letter['attempts']} "
+              f"{letter['item_key'][:90]}\n      {letter['error'][:200]}")
+    print(f"{len(letters)} open dead letter(s); the next run retries them and resolves what succeeds")
     return 0
 
 
@@ -145,12 +122,10 @@ def build_parser() -> argparse.ArgumentParser:
     cov = sub.add_parser("coverage", help="per-source coverage of the live calls (Markdown table)")
     cov.add_argument("--json", action="store_true")
     cov.set_defaults(func=cmd_coverage)
-    letters = sub.add_parser("dead-letters", help="list or retry failed items")
-    letters.add_argument("action", choices=["list", "retry"])
+    letters = sub.add_parser("dead-letters", help="list open failed items")
     letters.add_argument("--source")
     letters.add_argument("--limit", type=int, default=100)
     letters.set_defaults(func=cmd_dead_letters)
-    sub.add_parser("prune", help="apply the retention policy now").set_defaults(func=cmd_prune)
     embed = sub.add_parser("embed", help="embed chunks/records with MODEL_EMBEDDINGS when OLLAMA_URL answers")
     embed.add_argument("--limit", type=int, default=None)
     embed.add_argument("--records-only", action="store_true", help="embed only call records, not document chunks")

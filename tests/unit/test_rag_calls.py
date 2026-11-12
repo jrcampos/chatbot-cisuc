@@ -17,16 +17,49 @@ if str(ORCHESTRATOR_DIR) not in sys.path:
     sys.path.insert(0, str(ORCHESTRATOR_DIR))
 
 os.environ.setdefault("LLM_PROVIDER", "ollama")
-os.environ.setdefault("CALLS_CANDIDATES", "20")
+for _name, _value in {"CALLS_RETRIEVER_K_LEXICAL": "20", "CALLS_RETRIEVER_K_VECTOR": "20",
+                      "CALLS_RRF_WEIGHT_LEXICAL": "0.6", "CALLS_RRF_WEIGHT_VECTOR": "0.4",
+                      "CALLS_POOL_MULTIPLIER": "2", "CALLS_POOL_MIN_SIZE": "20",
+                      "CALLS_RERANKER_MODEL": "fake/model", "CALLS_QUERY_CACHE_SIZE": "0",
+                      "RAG_REQUEST_TIMEOUT": "5", "ORCH_RAG_MAX_PARALLEL": "1"}.items():
+    os.environ.setdefault(_name, _value)
 os.environ.setdefault("CALLS_DETAILED", "1")
 os.environ.setdefault("CALLS_DETAILED_MAX_CHARS", "4000")
 
-# RAG_CISUC also has a `retrieval` module: load this one under its own name.
-_spec = importlib.util.spec_from_file_location("rag_calls_retrieval", REPO_ROOT / "application" / "RAG_CALLS" / "retrieval.py")
-rc = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(rc)
+class _FakeCrossEncoder:
+    """Stands in for sentence_transformers.CrossEncoder (no model download in unit tests); keeps the
+    given order: earlier pairs score higher."""
 
-from routing import CALLS, CISUC, build_context, calls_key, parse_targets, retrieve  # noqa: E402
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def predict(self, pairs):
+        return [float(-i) for i in range(len(pairs))]
+
+
+def _load_without_model(name, path):
+    """Load a module with sentence_transformers replaced by the fake cross-encoder during its import."""
+    import types
+    fake = types.ModuleType("sentence_transformers")
+    fake.CrossEncoder = _FakeCrossEncoder
+    saved = sys.modules.get("sentence_transformers")
+    sys.modules["sentence_transformers"] = fake
+    try:
+        spec = importlib.util.spec_from_file_location(name, path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    finally:
+        if saved is None:
+            sys.modules.pop("sentence_transformers", None)
+        else:
+            sys.modules["sentence_transformers"] = saved
+    return module
+
+
+# RAG_CISUC also has a `retrieval` module: load this one under its own name.
+rc = _load_without_model("rag_calls_retrieval", REPO_ROOT / "application" / "RAG_CALLS" / "retrieval.py")
+
+from routing import CALLS, CISUC, build_context, calls_key, cisuc_key, combinar, intercalar_resultados, parse_targets  # noqa: E402
 
 
 # ---------------------------------------------------------------- RAG_CALLS retrieval
@@ -106,6 +139,10 @@ class TestGetRelevantCalls:
         monkeypatch.setattr(rc, "search_calls", search_calls)
         monkeypatch.setattr(rc, "render_context", render_context)
         monkeypatch.setattr(rc, "_vector", lambda conn, query: ["VEC-1", "LEX-2"])
+        monkeypatch.setattr(rc, "reranker", _FakeCrossEncoder())
+        monkeypatch.setattr(rc, "_passage", lambda hit: hit["title"])
+        monkeypatch.setattr(rc, "QUERY_CACHE_SIZE", 0)
+        rc._query_cache.clear()
         return rendered
 
     def test_result_shape_and_detail_levels(self, store):
@@ -120,6 +157,36 @@ class TestGetRelevantCalls:
     def test_exact_identifier_goes_first(self, store):
         results = rc.get_relevant_calls("deadline of EXACT-ID-01 please", 2, connect=FakeConn)
         assert [r["metadata"]["natural_key"] for r in results] == ["EXACT-ID-01", "LEX-1"]
+
+    def test_reranker_reorders_the_pool_but_not_exact_matches(self, store, monkeypatch):
+        class Reverse:  # scores the pool so that RRF order is reversed
+            def predict(self, pairs):
+                return [float(i) for i, _ in enumerate(pairs)]
+        monkeypatch.setattr(rc, "reranker", Reverse())
+        results = rc.get_relevant_calls("EXACT-ID-01 ai", 4, connect=FakeConn)
+        assert [r["metadata"]["natural_key"] for r in results] == ["EXACT-ID-01", "VEC-1", "LEX-2", "LEX-1"]
+
+    def test_only_complete_results_are_cached(self, store, monkeypatch):
+        monkeypatch.setattr(rc, "QUERY_CACHE_SIZE", 8)
+        rc.get_relevant_calls("ai health", 3, connect=FakeConn)
+        def boom():
+            raise AssertionError("cache hit must not touch the database")
+        assert [r["metadata"]["natural_key"] for r in rc.get_relevant_calls("ai health", 3, connect=boom)] == \
+            ["LEX-1", "LEX-2", "VEC-1"]
+
+    def test_vector_failure_still_answers_but_is_not_cached(self, store, monkeypatch):
+        monkeypatch.setattr(rc, "QUERY_CACHE_SIZE", 8)
+        def down(conn, query):
+            raise ConnectionError("embedding server unreachable")
+        monkeypatch.setattr(rc, "_vector", down)
+        assert [r["metadata"]["natural_key"] for r in rc.get_relevant_calls("ai", 2, connect=FakeConn)] == ["LEX-1", "LEX-2"]
+        assert rc._query_cache == {}
+
+    def test_database_failure_raises(self):
+        def down():
+            raise ConnectionError("database unreachable")
+        with pytest.raises(ConnectionError):
+            rc.get_relevant_calls("ai", 2, connect=down)
 
     def test_empty_query_returns_nothing_without_db(self):
         def boom():
@@ -137,6 +204,14 @@ class TestParseTargets:
         ("Fernando Boavida", (CISUC,), ["Fernando Boavida"]),          # no tag: CISUC, as before
         ("[OTHER] x", (CISUC,), ["[OTHER] x"]),                        # unknown tag: CISUC
         ("[CALLS]", (CALLS,), []),
+        # untagged call identifier -> calls ('[ID]' instead of '[CALLS] ID' is unwrapped)
+        ("[DIGITAL-ECCC-2027-DEPLOY-CYBER-11-AI4SME]", (CALLS,), ["DIGITAL-ECCC-2027-DEPLOY-CYBER-11-AI4SME"]),
+        ("ERC-2027-COG", (CALLS,), ["ERC-2027-COG"]),
+        ("EuropeAid/187686/ID/ACT/MK", (CALLS,), ["EuropeAid/187686/ID/ACT/MK"]),
+        ("[CISUC] HORIZON-CL4-2027-04-DIGITAL-EMERGING-05", (CISUC,), ["HORIZON-CL4-2027-04-DIGITAL-EMERGING-05"]),
+        ("state-of-the-art machine learning", (CISUC,), ["state-of-the-art machine learning"]),  # no number part
+        ("COVID-19 research", (CISUC,), ["COVID-19 research"]),                                  # 2 parts only
+        ("|", (CISUC,), []),                                                                     # no junk target
     ])
     def test_tags(self, raw, sources, targets):
         assert parse_targets(raw, calls_enabled=True) == (sources, targets)
@@ -145,15 +220,18 @@ class TestParseTargets:
         assert parse_targets("[CALLS] quantum", calls_enabled=False) == ((CISUC,), ["quantum"])
 
 
-class TestRetrieve:
-    def test_dedup_cap_and_failure_isolation(self):
-        def post(target):
-            if target == "down":
-                raise ConnectionError("unreachable")
-            return [{"text": "a", "metadata": {"natural_key": "K1"}}, {"text": "b", "metadata": {"natural_key": target}}]
+class TestInterleave:
+    def test_round_robin_dedup_and_cap(self):
+        a = [{"text": "1", "metadata": {"natural_key": k}} for k in ("A", "B", "C")]
+        b = [{"text": "1", "metadata": {"natural_key": k}} for k in ("B", "D")]
+        merged = intercalar_resultados([a, b], 3, calls_key)
+        assert [d["metadata"]["natural_key"] for d in merged] == ["A", "B", "D"]
 
-        docs = retrieve(post, ["X", "down", "Y"], top_k=3, key=calls_key)
-        assert [d["metadata"]["natural_key"] for d in docs] == ["K1", "X", "Y"]
+    def test_full_question_gets_half_of_the_slots(self):
+        def docs(*keys):
+            return [{"text": k, "metadata": {"source_file": "f"}} for k in keys]
+        merged = combinar(docs("Q1", "Q2", "Q3"), [docs("K1", "K2"), docs("L1")], 4, cisuc_key)
+        assert [d["text"] for d in merged] == ["Q1", "K1", "Q2", "L1"]
 
 
 class TestBuildContext:

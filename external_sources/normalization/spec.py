@@ -153,7 +153,7 @@ def derive_status(
             if deadline_dt < now:
                 fields["status"] = "closed"
         except (ValueError, TypeError):
-            # If we can't parse the deadline, leave status untouched
+            # Unparseable deadline: status unchanged
             pass
 
 
@@ -284,7 +284,7 @@ def load_spec(path: str | Path) -> FieldSpec:
     path = Path(path)
     try:
         with open(path, encoding="utf-8") as f:
-            data = yaml.load(f, Loader=_DuplicateKeyLoader)
+            data = yaml.load(f, Loader=_DuplicateKeyLoader)  # nosec B506: a SafeLoader subclass
     except FileNotFoundError as e:
         raise SpecError(f"spec file not found: {path}") from e
     except yaml.YAMLError as e:

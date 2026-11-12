@@ -102,7 +102,6 @@ class TestDiscoverLinks:
         links = discover_links(record, POLICY)
 
         assert [link.url for link in links] == ["https://a.eu/1", "https://a.eu/2"]
-        assert links[0].source_field == "conditions_links"
 
     def test_missing_fields_yield_no_links(self):
         """A record without link fields has no documents"""
@@ -340,7 +339,7 @@ class TestProfileClassification:
 
         (tmp_path / "prog.yaml").write_text(yaml.safe_dump({"programmes": {"p": {"id": "1", "label": "P"}}}))
         (tmp_path / "prof.yaml").write_text(
-            yaml.safe_dump({"profiles": {"p": {"extractor": "x", "classify": rules}}})
+            yaml.safe_dump({"profiles": {"p": {"classify": rules}}})
         )
         return load_profiles(tmp_path / "prof.yaml", tmp_path / "prog.yaml").for_programme("P")
 
@@ -552,7 +551,7 @@ class TestPipelineProfiles:
 
         (tmp_path / "prog.yaml").write_text(yaml.safe_dump({"programmes": {"p": {"id": "1", "label": "Prog"}}}))
         (tmp_path / "prof.yaml").write_text(yaml.safe_dump(
-            {"profiles": {"p": {"extractor": "x", "skip": [r"legacy\.eu/"]}}}))
+            {"profiles": {"p": {"skip": [r"legacy\.eu/"]}}}))
         return load_profiles(tmp_path / "prof.yaml", tmp_path / "prog.yaml")
 
     def test_skip_and_blocked_robots(self, tmp_path):

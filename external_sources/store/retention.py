@@ -1,7 +1,7 @@
 """
-Retention policy (config/store_policy.yaml `retention`). Runs at the end of every run and via
-`python -m external_sources.store prune`. Never deletes a published or previous snapshot, an
-open dead letter, or a document version that a retained snapshot links to.
+Retention policy (config/store_policy.yaml `retention`), applied at the end of every run.
+Never deletes a published or previous snapshot, an open dead letter, or a document version that
+a retained snapshot links to.
 """
 
 from __future__ import annotations

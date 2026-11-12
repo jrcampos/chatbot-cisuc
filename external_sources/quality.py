@@ -1,20 +1,17 @@
 """
-Quality policy, required-field gaps and alert notifiers for enriched records.
+Quality policy, required-field gaps and the alert log for enriched records.
 
 The policy (config/quality_policy.yaml) names the required fields per source; `compute_gaps`
 records what could not be filled and why. The store loader applies the coverage gates
-(store/loader.py); alerts inform people (log file, optional webhook) and NEVER block
-extraction or drop records.
+(store/loader.py); alerts go to alerts.log and NEVER block extraction or drop records.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import requests
 import yaml
 
 from external_sources.plugins.base import NormalizedRecord
@@ -46,10 +43,6 @@ def is_filled(value: Any) -> bool:
     return not (value is None or value == "" or value == [] or value == {})
 
 
-def source_of(record: NormalizedRecord, field: str) -> str:
-    """Provenance label of a field: api, detail, document or unknown."""
-    label = record.field_sources.get(field)
-    return label.split(":", 1)[0] if label else "unknown"
 
 
 def is_filled_any(record: NormalizedRecord, fields: list[str]) -> bool:
@@ -57,12 +50,6 @@ def is_filled_any(record: NormalizedRecord, fields: list[str]) -> bool:
     return any(is_filled(field_value(record, name)) for name in fields)
 
 
-def source_of_any(record: NormalizedRecord, fields: list[str]) -> str:
-    """Provenance label of the first filled member of `fields`."""
-    for name in fields:
-        if is_filled(field_value(record, name)):
-            return source_of(record, name)
-    return "unknown"
 
 
 def compute_gaps(
@@ -120,48 +107,6 @@ class LogNotifier:
         return True
 
 
-class WebhookNotifier:
-    """Posts alerts as a JSON `{"text": ...}` message (Slack/Discord-compatible shape)."""
-
-    def __init__(self, url: str, session: Any = None, timeout: float = 15.0) -> None:
-        self.url = url
-        self.session = session or requests.Session()
-        self.timeout = timeout
-
-    def notify(self, alerts: list[dict[str, Any]], plugin: str) -> bool:
-        """POST one summary message; returns False (never raises) on failure."""
-        if not alerts:
-            return True
-        try:
-            response = self.session.post(
-                self.url, json={"text": "\n".join(_lines(alerts, plugin))}, timeout=self.timeout
-            )
-        except requests.RequestException as exc:
-            print(f"[WARN] alert webhook failed: {exc}")
-            return False
-        status = getattr(response, "status_code", None)
-        if isinstance(status, int) and status >= 400:
-            print(f"[WARN] alert webhook returned HTTP {status}")
-            return False
-        return True
-
-
-class CompositeNotifier:
-    """Fans an alert list out to several notifiers."""
-
-    def __init__(self, notifiers: list[Any]) -> None:
-        self.notifiers = notifiers
-
-    def notify(self, alerts: list[dict[str, Any]], plugin: str) -> bool:
-        """True only when every notifier succeeded."""
-        return all([n.notify(alerts, plugin) for n in self.notifiers])
-
-
-def notifier_from_env(output_dir: str | Path, env: Mapping[str, str] | None = None) -> Any:
-    """Log notifier, plus a webhook when `ALERT_WEBHOOK_URL` is set (never in code/config)."""
-    import os
-
-    environment = os.environ if env is None else env
-    log = LogNotifier(Path(output_dir) / "alerts.log")
-    url = environment.get("ALERT_WEBHOOK_URL")
-    return CompositeNotifier([log, WebhookNotifier(url)]) if url else log
+def alert_notifier(output_dir: str | Path) -> LogNotifier:
+    """Alerts are printed and appended to `<output_dir>/alerts.log`."""
+    return LogNotifier(Path(output_dir) / "alerts.log")

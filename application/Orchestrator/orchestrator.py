@@ -25,7 +25,8 @@ import uvicorn
 from typing import Generator, Any, AsyncGenerator
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_openai import ChatOpenAI
-from routing import CALLS, CISUC, ROUTING_RULE, build_context, calls_key, cisuc_key, parse_targets, retrieve
+from rag_client import pesquisar_varias
+from routing import CALLS, CISUC, ROUTING_RULE, build_context, calls_key, cisuc_key, combinar, parse_targets
 
 # ===== Environment Configuration =====
 # RAG Configuration
@@ -151,55 +152,50 @@ class QueryRequest(BaseModel):
 # Main Logic (Streaming)
 # ---------------------------------------------------------
 
-def _post(url: str, query: str, top_k: int) -> list[dict[str, Any]]:
-    resposta_api = requests.post(url, json={"query": query, "top_k": top_k}, timeout=30)
-    resposta_api.raise_for_status()
-    return resposta_api.json().get("results", [])
-
-
-def gerador_streaming(pergunta_utilizador: str) -> Generator[str, Any, None]:
-    start_time = time.time()
-
-    # Step 1: Optimize the search query (Agora super rápido com o SLM)
+def recuperar_contexto(pergunta: str) -> tuple[tuple[str, ...], list[str], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Route with the SLM tag, then query each selected RAG with the full question AND the SLM
+    keywords (one per entity, REGRA 3): keywords alone lose the descriptive part of the question. 
+    A failing RAG call raises HTTP 502: never a silent empty context."""
     tempo_extracao_start = time.time()
-    alvo_limpo = extrator_alvos.invoke({"pergunta": pergunta_utilizador}).strip()
-
+    alvo_limpo = extrator_alvos.invoke({"pergunta": pergunta}).strip()
     print(f"\n[DEBUG] Alvo fixado pelo SLM: '{alvo_limpo}' (Demorou: {time.time() - tempo_extracao_start:.2f}s)")
 
-    # Step 2: Route and retrieve (one call per target, as before, on each selected service)
     fontes, alvos = parse_targets(alvo_limpo, CALLS_ENABLED)
-    alvos = alvos or [pergunta_utilizador]
-    print(f"[DEBUG] Fontes: {fontes} | {len(alvos)} alvo(s): {alvos}")
+    print(f"[DEBUG] Fontes: {fontes} | pergunta completa + {len(alvos)} alvo(s): {alvos}")
 
     documentos: list[dict[str, Any]] = []
     concursos: list[dict[str, Any]] = []
     if CISUC in fontes:
-        documentos = retrieve(lambda alvo: _post(RAG_API_URL, alvo, TOP_K), alvos, TOP_K, cisuc_key)
+        resultados_pergunta, *por_alvo = pesquisar_varias(RAG_API_URL, [pergunta, *alvos], TOP_K)
+        documentos = combinar(resultados_pergunta, por_alvo, TOP_K, cisuc_key)
     if CALLS in fontes:
-        concursos = retrieve(lambda alvo: _post(CALLS_API_URL, alvo, CALLS_TOP_K), alvos, CALLS_TOP_K, calls_key)
+        resultados_pergunta, *por_alvo = pesquisar_varias(CALLS_API_URL, [pergunta, *alvos], CALLS_TOP_K)
+        concursos = combinar(resultados_pergunta, por_alvo, CALLS_TOP_K, calls_key)
 
     for i, doc in enumerate(documentos, 1):
         print(f"   [DOC {i}] Ficheiro: {doc['metadata'].get('source_file', 'N/A')[:50]}...")
     for i, doc in enumerate(concursos, 1):
         print(f"   [CALL {i}] {doc['metadata'].get('natural_key', 'N/A')}")
+    return fontes, alvos, documentos, concursos
 
-    # Step 3: Assemble consolidated context (one labelled section per source)
-    contexto_final = build_context(documentos, concursos, fontes)
 
-    # Step 4: Stream the final response (Com o LLM Pesado)
+def gerador_streaming(pergunta_utilizador: str, contexto_final: str, start_time: float) -> Generator[str, Any, None]:
     print("[DEBUG] A gerar resposta final (Stream iniciado)...")
-
     resposta = {"context": contexto_final, "input": pergunta_utilizador, "today": date.today().isoformat()}
     for chunk in gerador_resposta.stream(resposta):
         yield str(chunk)
-
     print(f"\n[DEBUG] Tempo total de orquestração: {time.time() - start_time:.2f} segundos")
+
 
 @app.post("/chat", summary="Process a user question and stream the response.")
 def chat_endpoint(request: ChatRequest) -> StreamingResponse:
+    start_time = time.time()
+    # Retrieve BEFORE opening the stream: a RAG failure then becomes a proper HTTP 502
+    # instead of a 200 whose body is cut off mid-stream.
+    fontes, _, documentos, concursos = recuperar_contexto(request.pergunta)
     return StreamingResponse(
-        gerador_streaming(request.pergunta), 
-        media_type="text/plain"
+        gerador_streaming(request.pergunta, build_context(documentos, concursos, fontes), start_time),
+        media_type="text/plain",
     )
 
 # The RAG API is not exposed outside the Docker network: retrieval queries from

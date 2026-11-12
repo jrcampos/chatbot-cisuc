@@ -17,12 +17,12 @@
 #                  and quotes) decides; both values stay in `layers`
 #   absent         no layer states it
 #
-# RANGES (rule from Gabriel, 2026-10-15): when sources disagree on a number or a date we never pick one.
+# RANGES: when sources disagree on a number or a date, no single value is picked.
 # The verdict carries `range` = {min, max, primary, settled, values: [{value, layer, source, page?}]}
 # and the record gets details.value_range[field] (same shape + status). The status stays `conflicting`
 # unless an official source settles it (an official topic-page update notice, or a CHECKED verdict whose
 # status is `resolved`): then `settled` is true and the settled value is `primary`; every other value
-# stays listed. Context packs and the validation report show the range and cite every value's source.
+# stays listed. Context packs show the range and cite every value's source.
 #
 # Kinds:
 #   numeric        amounts; agreement within `tolerance` (merge_extractions keeps agreeing document

@@ -1,8 +1,8 @@
 """
 Programme profiles: how each EU programme documents its calls.
 
-Loaded from config/programme_profiles.yaml and validated against
-config/eu_programmes.yaml (every programme needs a profile, and vice versa).
+Loaded from config/programme_profiles.yaml and validated against config/eu_programmes.yaml
+(a profile for an unknown programme is an error; a programme without one uses the defaults).
 A profile carries the document-role classify rules, URL skip patterns, and which
 extraction families read each document role.
 """
@@ -10,7 +10,7 @@ extraction families read each document role.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -23,7 +23,7 @@ DEFAULT_EU_PROGRAMMES = CONFIG_DIR / "eu_programmes.yaml"
 
 FAMILY_ROLES = ("call_specific", "programme_level")
 RULE_ROLES = ("call_specific", "programme_level", "boilerplate", "other", "ignore")
-_PROFILE_KEYS = {"extractor", "families", "classify", "skip", "expect"}
+_PROFILE_KEYS = {"families", "classify", "skip"}
 _RULE_KEYS = {"role", "url", "text", "host"}
 
 
@@ -53,11 +53,9 @@ class Profile:
 
     key: str
     label: str
-    extractor: str
     families: dict[str, tuple[str, ...]]
     classify: tuple[ClassifyRule, ...] = ()
     skip: tuple[re.Pattern[str], ...] = ()
-    expect: dict[str, Any] = field(default_factory=dict)
 
     def families_for(self, role: str) -> tuple[str, ...]:
         """Family names that read documents of `role` (empty when none)."""
@@ -151,33 +149,25 @@ def load_profiles(
     extra = sorted(set(raw_profiles) - set(programmes))
     if extra:
         raise ValueError(f"{profiles_path}: profiles for unknown programmes: {extra}")
-    missing = sorted(set(programmes) - set(raw_profiles))
-    if missing:
-        raise ValueError(f"{profiles_path}: programmes without a profile: {missing}")
 
     profiles: list[Profile] = []
-    for key, body in raw_profiles.items():
+    for key in programmes:  # a programme without an entry uses the defaults
+        body = raw_profiles.get(key) or {}
         where = f"{profiles_path}: profile {key!r}"
         if not isinstance(body, dict):
             raise ValueError(f"{where} must be a mapping")
         unknown = set(body) - _PROFILE_KEYS
         if unknown:
             raise ValueError(f"{where}: unknown keys {sorted(unknown)}")
-        if not isinstance(body.get("extractor"), str):
-            raise ValueError(f"{where}: 'extractor' must be a string")
         families = {**default_families, **_families(body.get("families") or {}, where)}
         classify = tuple(_rule(r, where) for r in body.get("classify") or [])
         skip_raw = body.get("skip") or []
         if not isinstance(skip_raw, list):
             raise ValueError(f"{where}: 'skip' must be a list of regexes")
-        expect = body.get("expect") or {}
-        if not isinstance(expect, dict):
-            raise ValueError(f"{where}: 'expect' must be a mapping")
         profiles.append(
             Profile(
-                key=key, label=str(programmes[key].get("label", key)), extractor=body["extractor"],
-                families=families, classify=classify,
-                skip=tuple(_regex(p, where) for p in skip_raw), expect=dict(expect),
+                key=key, label=str(programmes[key].get("label", key)), families=families,
+                classify=classify, skip=tuple(_regex(p, where) for p in skip_raw),
             )
         )
     return ProfileRegistry(profiles)

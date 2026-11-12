@@ -156,8 +156,7 @@ families:
         unit: million
 
   # Horizon WP call blocks: the call id on its own line, then "Opening: 07 Oct 2027" and
-  # "Deadline(s): 20 Jan 2028" before the next call id line. Checked offline on the 2026-10-14 live
-  # corpus: 289 of 290 matched calls agree with the API by calendar date.
+  # "Deadline(s): 20 Jan 2028" before the next call id line.
   work_programme_call_conditions:
     roles: [programme_level]
     call_anchored: true

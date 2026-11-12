@@ -33,7 +33,6 @@ class FTCascadePlugin(FTPortalPlugin):
 
     def __init__(self, spec_path: str | Path = _SPEC, **kwargs: Any) -> None:
         super().__init__(spec_path=spec_path, **kwargs)
-        self._labels = {str(p["id"]): p["label"] for p in self.programmes.values()}
 
     def _build_cascade_query(self, status_codes: list[str]) -> dict[str, Any]:
         return {"bool": {"must": [{"terms": {"type": [self.SEARCH_TYPE]}}, {"terms": {"status": status_codes}}]}}

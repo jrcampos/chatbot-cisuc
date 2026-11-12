@@ -24,7 +24,6 @@ class DocLink:
 
     url: str
     text: str
-    source_field: str
 
 
 def discover_links(record: NormalizedRecord, policy: DocumentPolicy) -> list[DocLink]:
@@ -42,7 +41,7 @@ def discover_links(record: NormalizedRecord, policy: DocumentPolicy) -> list[Doc
             if not _WELL_FORMED_URL.match(url) or re.search(r"\s", url) or url in seen:
                 continue
             seen.add(url)
-            links.append(DocLink(url, str(entry.get("text") or "").strip(), field_name))
+            links.append(DocLink(url, str(entry.get("text") or "").strip()))
     return links
 
 

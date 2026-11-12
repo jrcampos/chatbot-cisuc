@@ -1,16 +1,15 @@
 # External Sources — EU funding calls
 
-Scheduled extraction of **open and forthcoming EU funding calls** into a Postgres + pgvector store,
+Extraction of **open and forthcoming EU funding calls** into a Postgres + pgvector store,
 read by the chatbot through the `RAG_CALLS` retrieval service (`application/RAG_CALLS/`), the same
 way CISUC's own data is read through `RAG_CISUC` from ChromaDB. Nothing here runs on the request
-path: the loader runs on a schedule (`calls_ingest` service, daily by default). Decisions and their
-reasons: [`DECISIONS.md`](DECISIONS.md).
+path: the loader (`calls_ingest`) runs once per deployment.
 
 ```
 GUI ─► Orchestrator ─┬─► RAG_CISUC (/query) ─► chromadb               CISUC knowledge base
      (SLM source tag └─► RAG_CALLS (/query) ─► calls_db (Postgres + pgvector, read-only login)
       [CISUC] [CALLS] [AMBOS])                     ▲
-                        calls_ingest: store run --all (daily) + store embed --records-only
+                        calls_ingest (one-shot): store run --all + store embed --records-only
 ```
 
 ## Three layers per call, one plugin per source
@@ -136,7 +135,7 @@ Every enriched record carries (see `config/verification_policy.yaml`, `verificat
   deadline_date, start_date, programme and eligibility: `status` (confirmed | single_source |
   conflicting | resolved | absent), the value per layer, how many independent layers agree (API
   and detail endpoint count as one), the source URLs/pages and `checked_at`. Agreeing document
-  values are kept in `details.corroboration` (they used to be dropped). A topic budget equal to
+  values are kept in `details.corroboration`. A topic budget equal to
   the call budget stated by the call document is labelled `level: call_total`.
 - **Ranges, never a picked value**: when sources disagree on a number or a date, the verdict and
   `details.value_range[field]` hold `{min, max, primary, settled, status, values: [{value, layer,
@@ -176,62 +175,65 @@ absence; calls whose deadlines have all passed are served as `closed` at once.
 
 ### Running it
 
-In the application stack (`./scripts/run-application.sh up-build`) three services do everything:
+In the application stack (`./scripts/run-application.sh up-build`) four services do everything:
 
-- `calls_db` — pgvector image; `store/init/01-reader-role.sh` creates the read-only login on the
-  first start of an empty volume.
-- `calls_ingest` — `application/RAG_CALLS/ingest.sh`: `store migrate`, then every
-  `CALLS_INGEST_INTERVAL_SECONDS` `store run --all`, `store embed --records-only`, `store status`.
+- `calls_db` — pgvector image; `store/init/01-reader-role.sh` creates the read-only login (with
+  `EXTSRC_DB_READER_STATEMENT_TIMEOUT_MS`) on the first start of an empty volume.
+- `calls_migrate` — one-shot `store migrate`; `rag_calls` and `calls_ingest` start only after it succeeds.
+- `calls_ingest` — one-shot load on every `up` (`application/RAG_CALLS/ingest.sh`): `store run --all`,
+  `store embed --records-only`, `store status`, then it exits.
 - `rag_calls` — the retrieval API (same image).
 
 Configuration is in `config/chatbot.env`; the two passwords (`EXTSRC_DB_PASSWORD`,
-`EXTSRC_DB_READER_PASSWORD`) in `secrets/chatbot.env` locally and in GitHub secrets in CI. The first
-load of a new stack downloads every document (about 15 minutes); until it is published `rag_calls`
-returns no calls. Manual commands run inside the loader container:
+`EXTSRC_DB_READER_PASSWORD`) in `secrets/chatbot.env` locally and in GitHub secrets in CI. Every
+setting is required (no defaults in code). The first load of a new stack downloads every document
+(about 15 minutes); until it is published `rag_calls` returns no calls. Manual commands run in a
+fresh loader container:
 
 ```bash
-docker compose -p <project> exec calls_ingest python -m external_sources.store status
-docker compose -p <project> exec calls_ingest python -m external_sources.store coverage
-docker compose -p <project> exec calls_ingest python -m external_sources.store dead-letters list
-docker compose -p <project> exec calls_ingest python -m external_sources.store run --source ft_cascade --fresh
+docker compose -p <project> run --rm calls_ingest python -m external_sources.store status
+docker compose -p <project> run --rm calls_ingest python -m external_sources.store coverage
+docker compose -p <project> run --rm calls_ingest python -m external_sources.store dead-letters
+docker compose -p <project> run --rm calls_ingest python -m external_sources.store run --source ft_cascade --fresh
 ```
 
 Exit codes of `store run`: **0** all sources published complete · **1** degraded (a source partial,
 rejected or failed — the last good data stays served, flagged) · **2** configuration error ·
 **3** database unreachable (batches spooled, loaded by the next run) · **4** another run in progress
-· **75** interrupted (resumed by the next run). Alerts go to `<work>/alerts.log` and, when
-`ALERT_WEBHOOK_URL` is set, to that webhook. PDF conversion needs `pdftotext` (poppler-utils, in the
-image). Document fetches honour robots.txt; challenge pages are dead letters, never bypassed.
+· **75** interrupted (resumed by the next run). Alerts go to `<work>/alerts.log`. PDF conversion needs `pdftotext` (poppler-utils, in the
+image). Document fetches honour robots.txt and only reach http(s) hosts with public addresses
+(every redirect re-checked: no access to the stack's services or the lab network); challenge
+pages are dead letters, never bypassed.
 
 ### What the chatbot reads
 
-`RAG_CALLS` answers `POST /query {query, top_k}` with `{results: [{text, metadata}]}`, like
-`RAG_CISUC`: an exact lookup of any call/topic identifier in the query goes first, then Postgres
-full-text search (any-term match, like BM25) and pgvector search over the call embeddings, fused
-with the same weighted RRF as `RAG_CISUC` (0.6 / 0.4). Each call is one cited text block from
-`context.py` (card, numbered sources, description, budget with ranges, deadlines): the first
-`CALLS_DETAILED` calls in full, the rest compact. `GET /health` shows the freshness of every source.
+Retrieval follows the same technique and values as `RAG_CISUC`, so both sources go through the
+same process:
 
-The underlying read API (`store/queries.py`: read-only login, 5 s statement timeout, parameterised
-SQL) also has deadline-window, budget-range and programme filters for later use:
+- The Orchestrator queries `RAG_CALLS` with the **full question and each SLM keyword**, interleaves
+  the result lists (the full question gets half of the slots) and answers **HTTP 502** if a RAG call
+  fails (`Orchestrator/rag_client.py`); retrieval runs before the answer stream starts.
+- `RAG_CALLS` (`POST /query {query, top_k}` -> `{results: [{text, metadata}]}`): Postgres full-text
+  search (any-term match, like BM25) and pgvector search, 20 candidates each, weighted RRF 0.6 / 0.4,
+  a pool of max(2 x top_k, 20) rescored by the cross-encoder `unicamp-dl/mMiniLM-L6-v2-mmarco-v2`,
+  LRU cache (512) of complete results, HTTP 500 on failure, `/health` 503 until warm. Settings:
+  `CALLS_*` in `config/chatbot.env`, same values as the `RAG_*` of `RAG_CISUC`.
+- Calls-specific: a call/topic identifier in the query is looked up exactly and goes first.
+- Each call is one cited text block from `context.py` (card, numbered sources, description, budget
+  with ranges, deadlines): the first `CALLS_DETAILED` calls in full, the rest compact.
 
-```python
-from external_sources.store import queries
-conn = queries.connect_reader()
-calls = queries.search_calls(conn, text="quantum computing", text_any=True, programme="Horizon",
-                             deadline_from=date(2027, 1, 1), budget_min=1_000_000, order="relevance")
-pack = queries.render_context(calls[0], "deadlines")   # capped blocks + [Data note] when stale
-```
+The read API is `store/queries.py`: read-only login, 5 s statement timeout, parameterised SQL;
+`/query` input is capped at 1,000 characters.
 
 ### Recovery runbook
 
 | Failure | What happens automatically | What to do |
 |---|---|---|
 | Source API down / 5xx / timeouts | retries with backoff, circuit breaker; source marked `failed`, last snapshot kept and flagged `stale` (`current.source_freshness`), exit 1 | nothing; check `status`; next run refreshes |
-| Some pages/programmes fail | snapshot published as `partial` with reasons; absent calls carried, absence not counted | nothing; `dead-letters list` shows the pages |
-| Malformed JSON / empty response | retried; then the page is a dead letter (with query) | `dead-letters retry` once the API is back |
-| API schema drift | unknown keys → `schema_drift` gaps (raw kept), records without id → dead letters with payload | update the field spec; `dead-letters retry` re-normalizes stored payloads |
-| Document 404/403/corrupt/too large/unsupported | record loaded without it; document dead letter; robots-blocked is a policy outcome | `dead-letters retry` after fixing; nothing for robots |
+| Some pages/programmes fail | snapshot published as `partial` with reasons; absent calls carried, absence not counted | nothing; `dead-letters` shows the pages |
+| Malformed JSON / empty response | retried; then the page is a dead letter (with query) | nothing; the next run retries it |
+| API schema drift | unknown keys → `schema_drift` gaps (raw kept), records without id → dead letters with payload | update the field spec; the next run re-normalizes |
+| Document 404/403/corrupt/too large/unsupported | record loaded without it; document dead letter; robots-blocked is a policy outcome | nothing; the next run retries it |
 | Validation rejects a snapshot (count drop, coverage collapse) | last good snapshot stays published, source `stale`, critical alert | inspect `extsrc.snapshot.validation`; if the drop is real: `run --source X --force-publish` |
 | Database down at load | batch spooled (`runs/<id>/<source>/batch.json`), exit 3 | start the DB; the next `run` loads spooled batches first |
 | Connection lost mid-load | transaction rolled back (nothing half-loaded), batch spooled, exit 3 | same as above |
@@ -241,13 +243,12 @@ pack = queries.render_context(calls[0], "deadlines")   # capped blocks + [Data n
 | Two runs at once | second exits 4 | nothing |
 | Bad deploy / wrong data published | previous snapshot kept (`source_state.previous_snapshot_id`) | `UPDATE extsrc.source_state SET published_snapshot_id = previous_snapshot_id WHERE source = '...'` |
 
-Retention runs at the end of each run (`store_policy.yaml: retention`; also `python -m
-external_sources.store prune`).
+Retention runs at the end of each run (`store_policy.yaml: retention`). A dead letter is resolved
+automatically when a later run loads or fetches the item.
 
 ## How to add a source
 
-1. Check the licence/terms first and record them in `DECISIONS.md` (no scraping behind challenges,
-   robots.txt honoured).
+1. Check the licence/terms first (no scraping behind challenges, robots.txt honoured).
 2. Write the plugin (`plugins/<source>.py`, `SourcePlugin` in `plugins/base.py`; fill
    `self.failures` / `self.partial_reasons` instead of raising, check `self.stop_requested()`
    between pages) and its field spec `config/<source>_fields.yaml`, with any source-specific

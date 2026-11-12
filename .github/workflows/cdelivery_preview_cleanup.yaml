@@ -50,3 +50,6 @@ jobs:
               [[ -n "$image" ]] && docker image rm "$image" || true
             done < /tmp/preview-images.txt
           fi
+
+      - name: Prune unused Docker build cache
+        run: docker builder prune -af --filter "until=168h"

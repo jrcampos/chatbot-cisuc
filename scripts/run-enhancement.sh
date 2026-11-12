@@ -17,6 +17,8 @@ fi
 docker compose \
     -f preprocessing/docker-compose.yaml \
     exec \
+    -e LLM_PROVIDER \
+    -e OLLAMA_URL \
     -e OPENAI_API_KEY \
     -e ENHANCEMENT_MODEL \
     -e ENHANCEMENT_MAX_WORKERS \

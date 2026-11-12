@@ -45,18 +45,31 @@ generated data and are gitignored; both are recreated by running the
 pipeline. The ground-truth files are small enough (~470KB total) to share
 directly with whoever needs them.
 
-All three scripts are run with `python3` from the repository root.
-`extract_corpus.py` is free; the other two make billed OpenAI API calls.
+All three scripts are run through `./scripts/run-evaluation.sh` from the
+repository root, which loads their configuration (see "Environment
+variables" below). `extract_corpus.py` is free; the other two make billed
+OpenAI API calls.
+
+```bash
+./scripts/run-evaluation.sh extract                 # one stage
+./scripts/run-evaluation.sh extract generate        # several, in the given order
+./scripts/run-evaluation.sh extract -- --output <path>   # arguments for a single stage
+```
+
+Stages: `extract` (`extract_corpus.py`), `generate`
+(`generate_ground_truth.py`), `validate` (`validate_ground_truth.py`) and
+`evaluate` (`tests/rag_ravluator.py`, which asks interactively which of its
+phases to run).
 
 ## Prerequisites
 
-- A local ChromaDB running and reachable at `CHROMA_ANALYSIS_URL`
-  (default `http://localhost:8000`), containing the `cisuc_rag` collection.
+- A local ChromaDB running and reachable at `CHROMA_ANALYSIS_URL`,
+  containing the collection named by `CHROMA_COLLECTION`.
   See "Providing the ChromaDB" below.
 - `.local/raw/news/markdown/news_combined.md`, produced by
   `./scripts/run-ingestion.sh` (the Articles category reads it directly).
-- `secrets/evaluation.env` with `OPENAI_API_KEY`, and optionally
-  `OPENAI_MODEL_EVALUATOR` (default `gpt-5.4`).
+- `secrets/evaluation.env` defining the variables marked as coming from it
+  in "Environment variables" below.
 - Python: `requests` is the only external dependency of these three scripts.
 
 ### Providing the ChromaDB
@@ -93,7 +106,7 @@ older corpus (the tag is the commit SHA):
 docker run -d --name chroma-pinned -p 8001:8000 \
   ghcr.io/<owner>/cisuc-chromadb:<commit-sha>
 CHROMA_ANALYSIS_URL=http://localhost:8001 \
-  python3 tests/qa_generation/extract_corpus.py --output corpus/corpus-pinned.json
+  ./scripts/run-evaluation.sh extract -- --output corpus/corpus-pinned.json
 ```
 
 Note that a corpus is only fully reproducible from a pinned image for
@@ -103,13 +116,27 @@ pinned by the image.
 
 ### Environment variables
 
-| Variable | Default | Used by |
+The scripts load no files themselves: like the other `scripts/run-*.sh`,
+`run-evaluation.sh` exports the files below and the Python code only reads
+`os.environ`. All variables are required and have no defaults in code: a
+missing one stops the script with a `KeyError` (or, for `OPENAI_API_KEY`, an
+explicit error) before any work is done.
+
+| Variable | Defined in | Used by |
 |---|---|---|
-| `CHROMA_ANALYSIS_URL` | `http://localhost:8000` | `extract_corpus.py` |
-| `CHROMA_COLLECTION` | `cisuc_rag` | `extract_corpus.py` |
-| `WORKSPACE` | `<repo>/.local` | `extract_corpus.py` (locates the news markdown) |
-| `OPENAI_API_KEY` | — | generation, validation |
-| `OPENAI_MODEL_EVALUATOR` | `gpt-5.4` | generation, validation |
+| `CHROMA_ANALYSIS_URL` | `config/evaluation.env` (versioned) | `extract_corpus.py` |
+| `CHROMA_COLLECTION` | `config/chatbot-common.env` (versioned; do not redefine) | `extract_corpus.py` |
+| `OPENAI_API_KEY` | `secrets/evaluation.env` | generation, validation |
+| `OPENAI_MODEL_EVALUATOR` | `secrets/evaluation.env` | generation, validation |
+
+`config/` files are versioned; `secrets/evaluation.env` is gitignored, so
+each person keeps their own copy (in CI, its variables would come from
+secrets instead). A `CHROMA_ANALYSIS_URL` exported in the shell takes
+precedence over `config/evaluation.env`, which is how the pinned-image example
+above points at another database.
+
+The news markdown is always read from `<repo>/.local`, the host directory
+the preprocessing containers mount as their workspace.
 
 ---
 
@@ -172,7 +199,7 @@ Markdown has not been chunked and still carries one
 ### Usage
 
 ```bash
-python3 tests/qa_generation/extract_corpus.py
+./scripts/run-evaluation.sh extract
 ```
 
 `--output <path>` writes elsewhere than the default `corpus/corpus.json`.
@@ -266,7 +293,7 @@ two ways:
 ### Usage
 
 ```bash
-python3 tests/qa_generation/generate_ground_truth.py
+./scripts/run-evaluation.sh generate
 ```
 
 Writes `output/ragas_ground_truth.json`, creating the directory if needed.
@@ -361,7 +388,7 @@ from the next unvalidated batch instead of re-paying for completed work.
 ### Usage
 
 ```bash
-python3 tests/qa_generation/validate_ground_truth.py
+./scripts/run-evaluation.sh validate
 ```
 
 ### Outputs
